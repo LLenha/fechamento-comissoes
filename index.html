@@ -182,6 +182,8 @@ table.geral td.cell.miss{color:var(--bad)}
 .bonus .tot{font-family:var(--f-data);font-weight:500;margin-right:auto}
 .bchip{font-size:.72rem;border-radius:999px;padding:2px 8px;border:1px solid var(--line);color:var(--muted)}
 .bchip.on{border-color:var(--ok);color:var(--ok);background:var(--ok-soft)}
+.pagar{display:flex;justify-content:space-between;align-items:baseline;gap:10px;background:var(--accent-soft);border-radius:8px;padding:8px 12px;font-weight:600}
+.pagar b{font-size:1.05rem;color:var(--accent)}
 .empty{background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:24px;text-align:center;color:var(--muted)}
 
 /* regra */
@@ -380,7 +382,9 @@ function compute(rec){
       (N(m.bol)>0 && N(r.bol)>=N(m.bol)) ? B[4] : 0,
     ];
     const bonus=bon.reduce((a,b)=>a+b,0);                                             // G15
-    return {ativo:true, nome:r.nome, m1:r.m1, m2:r.m2, rec:r.rec, pm1, pm2, ok, faixa, fi, com, bon, bonus,
+    // comissão em R$: % da faixa aplicado sobre a receita realizada pelo consultor
+    const comR=Math.round(com*N(r.rec)*100)/100;
+    return {ativo:true, nome:r.nome, m1:r.m1, m2:r.m2, rec:r.rec, pm1, pm2, ok, faixa, fi, com, comR, bon, bonus, total:comR+bonus,
             f1:Math.max(0,N(r.m1)-N(r.rec)), f2:Math.max(0,N(r.m2)-N(r.rec)),         // H27, I27
             faltam:9-ok, ind};                                                        // J27
   });
@@ -393,8 +397,13 @@ window.calcEngine = compute;
    GERENTE E SUPERVISORA
    ============================================================ */
 // 3º indicador IAF da gerente, por loja. 'serv' = Serviços (qtd) · 'resg' = Resgate Fidelidade %
-const GERENTE_3IND = {'Centro':'serv','Sul':'serv','Leste':'serv','Litoral':'resg','Oeste':'resg','Norte':'resg'};
-const GER_METAS_PADRAO = {id:1.15, skin:0.03, serv:40, resg:0.50};
+const GERENTE_3IND = {'Centro':'serv','Sul':'serv','Leste':'serv','Litoral':'resg','Oeste':'resg'};
+const GER_METAS_PADRAO = {id:1.15, skin:0.03, serv:40, resg:0.50, nps:0.90};
+// Lojas em que a gerente recebe prêmios fixos em R$, sem comissão em %:
+// receita da loja ≥ Meta 1 → R$ 250; Nota NPS ≥ meta → R$ 80; Skin ≥ meta → R$ 80.
+const GER_PREMIO_LOJAS = ['Norte'];
+const GER_PREMIOS = [{k:'receita', nome:'Receita (Meta 1 da loja)', valor:250}, {k:'nps', nome:'Nota NPS %', valor:80}, {k:'skin', nome:'Skin %', valor:80}];
+const gerPremio = loja => GER_PREMIO_LOJAS.includes(loja);
 // faixas da gerente: mesmos critérios e mesmos % em todas as lojas
 const GER_FAIXAS = [
   {nome:'Vender 70% do 1º desafio',              ating:0.7},
@@ -405,8 +414,9 @@ const GER_FAIXAS = [
 ];
 const GER_PCT = {padrao:[0.006,0.007,0.008,0.009,0.010]};   // mesma tabela para todas as lojas
 function gerPct(loja){ return GER_PCT[loja] || GER_PCT.padrao; }
-function emptyGer(){ return {receita:null, diamante:false, metas:Object.assign({},GER_METAS_PADRAO), id:null, skin:null, serv:null, resg:null}; }
+function emptyGer(){ return {receita:null, diamante:false, metas:Object.assign({},GER_METAS_PADRAO), id:null, skin:null, serv:null, resg:null, nps:null}; }
 function gerInds(loja){
+  if(gerPremio(loja)) return [{k:'nps',label:'Nota NPS %',unit:'pct'},{k:'skin',label:'Skin %',unit:'pct'}];
   const t=GERENTE_3IND[loja]||'serv';
   return [{k:'id',label:'ID Cliente %',unit:'pct'},{k:'skin',label:'Skin %',unit:'pct'},
           t==='serv'?{k:'serv',label:'Serviços (qtd)',unit:'int'}:{k:'resg',label:'Resgate Fidelidade %',unit:'pct'}];
@@ -416,6 +426,13 @@ function computeGerente(r){
   const q1=ratio(g.receita,r.metas.m1), q2=ratio(g.receita,r.metas.m2);
   const ind=gerInds(r.loja).map(i=>({...i, meta:g.metas[i.k], real:g[i.k], v:ratio(g[i.k],g.metas[i.k])}));
   const iaf=ind.filter(i=>i.v>=1).length;
+  if(gerPremio(r.loja)){
+    // prêmios fixos: cada critério atingido soma o seu valor; não há comissão em %
+    const ok={receita:q1>=1, nps:ind[0].v>=1, skin:ind[1].v>=1};
+    const premios=GER_PREMIOS.map(p=>({...p, atingido:ok[p.k], ganho:ok[p.k]?p.valor:0}));
+    const premio=premios.reduce((a,p)=>a+p.ganho,0);
+    return {q1,q2,ind,iaf,fi:-1,com:0,comR:0,premio,premios,total:premio,modo:'premio', faixa:'Prêmio fixo'};
+  }
   // P27: =IF(AND(2º desafio>=100%, Diamante="Sim"), F5, IF(AND(1º desafio>=100%, IAF>=3), F4, IF(1º>=90%, F3, IF(1º>=80%, F2, IF(1º>=70%, F1, 0)))))
   let fi=-1;
   if(q2>=1 && g.diamante) fi=4;
@@ -423,7 +440,9 @@ function computeGerente(r){
   else if(q1>=0.9) fi=2;
   else if(q1>=0.8) fi=1;
   else if(q1>=0.7) fi=0;
-  return {q1,q2,ind,iaf,fi,com:fi<0?0:P[fi], faixa:fi<0?'Abaixo de 70%':GER_FAIXAS[fi].nome};
+  const com=fi<0?0:P[fi];
+  const comR=Math.round(com*N(g.receita)*100)/100;   // % aplicado sobre a receita realizada da loja
+  return {q1,q2,ind,iaf,fi,com,comR,premio:0,total:comR,modo:'pct', faixa:fi<0?'Abaixo de 70%':GER_FAIXAS[fi].nome};
 }
 // supervisora: meta = soma das Metas 1 das lojas dela; realizado = soma das receitas dessas lojas
 // As lojas Sul e Leste não entram na comissão da supervisora.
@@ -517,7 +536,7 @@ function dadosExemplo(){
         serv:Math.round(12*(0.7+0.6*rnd())), resg:var_(0.50,0.9,1.15), bol:var_(150,0.9,1.15,2), b1:var_(0.35,0.8,1.2),
         npsResp:Math.round(12*(0.7+0.6*rnd())), npsNota:var_(0.90,0.95,1.08), ld:Math.round(600*(0.7+0.6*rnd()))}); });
     const recLoja=r.rows.reduce((a,x)=>a+x.rec,0)*1.04;
-    Object.assign(r.ger,{receita:Math.round(recLoja*100)/100, diamante:li%3===0, id:var_(1.15,0.95,1.1), skin:var_(0.03,0.85,1.2), serv:Math.round(40*(0.85+0.3*rnd())), resg:var_(0.50,0.95,1.1)});
+    Object.assign(r.ger,{receita:Math.round(recLoja*100)/100, diamante:li%3===0, id:var_(1.15,0.95,1.1), skin:var_(0.03,0.85,1.2), serv:Math.round(40*(0.85+0.3*rnd())), resg:var_(0.50,0.95,1.1), nps:var_(0.90,0.95,1.08)});
     return r;
   });
   return normalizar({mes:'Outubro/2026', supervisora:'Marcela', loja:LOJAS[0], view:'fech', records});
@@ -738,7 +757,7 @@ function renderPainel(){
     <article class="cons">
       <div class="cons-head">
         <div><h3>${esc(x.nome)}</h3><span class="pill ${PILL[x.fi]}">${esc(x.faixa)}</span></div>
-        <div class="com"><div class="v">${pct(x.com)}</div><span class="small muted">comissão</span></div>
+        <div class="com"><div class="v">${pct(x.com)}</div><span class="small muted">comissão · ${brl(x.comR)}</span></div>
       </div>
       <div class="metas2">
         <div class="mt"><div class="row"><span class="muted">Meta 1</span><b class="num ${N(x.pm1)>=1?'pos':'neg'}">${pct(x.pm1)}</b></div>${bar(x.pm1)}
@@ -753,6 +772,7 @@ function renderPainel(){
       <div class="bonus"><span class="tot">IAF ${brl(x.bonus)}</span>
         ${x.bon.map((v,i)=>`<span class="bchip ${v>0?'on':''}" title="${esc(B[i])}">${esc(shortB(i,r))}</span>`).join('')}
       </div>
+      <div class="pagar"><span>Total a pagar <span class="small muted">(comissão ${brl(x.comR)} + IAF ${brl(x.bonus)})</span></span><b class="num">${brl(x.total)}</b></div>
     </article>`).join('');
   document.getElementById('tab-painel').innerHTML=`
     <div class="kpis">
@@ -808,7 +828,20 @@ function renderRegra(){
 
 /* ---------- Gerente (aba dentro de cada loja) ---------- */
 function renderGerente(){
-  const r=cur(), g=r.ger, P=gerPct(r.loja);
+  const r=cur(), g=r.ger, P=gerPct(r.loja), premio=gerPremio(r.loja);
+  const tabela = premio
+    ? `<div class="card"><h2>Prêmios · gerente ${esc(r.loja)}</h2>
+        <table class="regra"><thead><tr><th>Critério</th><th>Prêmio</th></tr></thead><tbody>
+        ${GER_PREMIOS.map((p,i)=>`<tr id="g-pr-${i}"><td>${esc(p.nome)}</td><td class="num">${brl(p.valor)}</td></tr>`).join('')}
+        <tr><td><b>Total possível</b></td><td class="num"><b>${brl(GER_PREMIOS.reduce((a,p)=>a+p.valor,0))}</b></td></tr>
+        </tbody></table>
+        <p class="small muted" style="margin:0">Nesta loja, a gerente recebe prêmios fixos por critério atingido, sem comissão em %.</p>
+      </div>`
+    : `<div class="card"><h2>Tabela de comissão · gerente ${esc(r.loja)}</h2>
+        <table class="regra"><thead><tr><th>Critério</th><th>Comissão</th></tr></thead><tbody>
+        ${GER_FAIXAS.map((f,i)=>`<tr id="g-fx-${i}"><td>${esc(f.nome)}</td><td class="num">${pct(P[i])}</td></tr>`).join('')}
+        </tbody></table>
+      </div>`;
   document.getElementById('tab-ger').innerHTML=`
     <div class="kpis" id="gerKpis"></div>
     <div class="ger-wrap">
@@ -816,13 +849,15 @@ function renderGerente(){
         <h2>Dados da loja para a gerente</h2>
         <div class="grid-metas">
           ${field('ger.receita','brl',g.receita,'Receita realizada da loja','g-receita')}
-          <div class="f"><span class="name">Loja Diamante IAF?</span>
+          ${premio?'':`<div class="f"><span class="name">Loja Diamante IAF?</span>
             <div class="seg" role="group" aria-label="Loja Diamante IAF?">
               <button type="button" data-diamante="1" aria-pressed="${g.diamante}">Sim</button><button type="button" data-diamante="0" aria-pressed="${!g.diamante}">Não</button>
-            </div></div>
+            </div></div>`}
         </div>
-        <p class="small muted" style="margin:0">A receita da loja é digitada à parte (não é a soma dos consultores). Ela é usada no 1º e 2º desafio da gerente, contra a Meta 1 (${N(r.metas.m1)?brl(r.metas.m1,0):'não preenchida'}) e a Meta 2 (${N(r.metas.m2)?brl(r.metas.m2,0):'não preenchida'}) da loja, e na premiação da supervisora.</p>
-        <h3>Indicadores IAF da gerente</h3>
+        <p class="small muted" style="margin:0">A receita da loja é digitada à parte (não é a soma dos consultores). ${premio
+          ? `Ela é comparada com a Meta 1 da loja (${N(r.metas.m1)?brl(r.metas.m1,0):'não preenchida'}) e entra na premiação da supervisora.`
+          : `Ela é usada no 1º e 2º desafio da gerente, contra a Meta 1 (${N(r.metas.m1)?brl(r.metas.m1,0):'não preenchida'}) e a Meta 2 (${N(r.metas.m2)?brl(r.metas.m2,0):'não preenchida'}) da loja, e na premiação da supervisora.`}</p>
+        <h3>${premio?'Indicadores da gerente':'Indicadores IAF da gerente'}</h3>
         <div class="ger-ind">
           <span class="h">Indicador</span><span class="h">Meta</span><span class="h">Realizado</span><span class="h" style="text-align:right">Atingido</span>
           ${gerInds(r.loja).map(i=>`
@@ -833,25 +868,26 @@ function renderGerente(){
         </div>
         <span class="errmsg" hidden></span>
       </div>
-      <div class="card"><h2>Tabela de comissão · gerente ${esc(r.loja)}</h2>
-        <table class="regra"><thead><tr><th>Critério</th><th>Comissão</th></tr></thead><tbody>
-        ${GER_FAIXAS.map((f,i)=>`<tr id="g-fx-${i}"><td>${esc(f.nome)}</td><td class="num">${pct(P[i])}</td></tr>`).join('')}
-        </tbody></table>
-      </div>
+      ${tabela}
     </div>`;
   updateGerente();
 }
 function updateGerente(){
   const box=document.getElementById('gerKpis'); if(!box) return;
   const r=cur(), x=computeGerente(r);
-  box.innerHTML=`
-    <div class="kpi"><span class="eyebrow">Gerente</span><span class="v" style="font-family:var(--f-body);font-size:1.05rem">${esc(r.gerente||'—')}</span><span class="small muted">${esc(r.loja)}</span></div>
+  const kpiGerente=`<div class="kpi"><span class="eyebrow">Gerente</span><span class="v" style="font-family:var(--f-body);font-size:1.05rem">${esc(r.gerente||'—')}</span><span class="small muted">${esc(r.loja)}</span></div>`;
+  box.innerHTML = x.modo==='premio' ? kpiGerente+`
+    <div class="kpi"><span class="eyebrow">Receita ÷ Meta 1</span><span class="v ${x.q1>=1?'pos':'neg'}">${pct(x.q1)}</span>${bar(x.q1)}</div>
+    <div class="kpi"><span class="eyebrow">Critérios atingidos</span><span class="v">${x.premios.filter(p=>p.atingido).length} de 3</span></div>
+    <div class="kpi"><span class="eyebrow">Prêmio gerente</span><span class="v">${brl(x.premio)}</span><span class="small muted">Sem comissão em %</span></div>`
+  : kpiGerente+`
     <div class="kpi"><span class="eyebrow">1º Desafio</span><span class="v ${x.q1>=1?'pos':'neg'}">${pct(x.q1)}</span>${bar(x.q1)}</div>
     <div class="kpi"><span class="eyebrow">2º Desafio</span><span class="v ${x.q2>=1?'pos':'neg'}">${pct(x.q2)}</span>${bar(x.q2)}</div>
     <div class="kpi"><span class="eyebrow">Indicadores IAF</span><span class="v">${x.iaf} de 3</span><span class="small muted">Diamante: ${r.ger.diamante?'Sim':'Não'}</span></div>
-    <div class="kpi"><span class="eyebrow">Comissão gerente</span><span class="v">${pct(x.com)}</span><span class="small muted">${esc(x.faixa)}</span></div>`;
+    <div class="kpi"><span class="eyebrow">Comissão gerente</span><span class="v">${brl(x.comR)}</span><span class="small muted">${pct(x.com)} da receita da loja · ${esc(x.faixa)}</span></div>`;
   x.ind.forEach(i=>{ const el=document.getElementById('g-at-'+i.k); if(el){ el.textContent=pct(i.v); el.className='num '+(i.v>=1?'pos':'neg'); } });
   GER_FAIXAS.forEach((_,i)=>{ const tr=document.getElementById('g-fx-'+i); if(tr) tr.style.background=i===x.fi?'var(--ok-soft)':''; });
+  (x.premios||[]).forEach((p,i)=>{ const tr=document.getElementById('g-pr-'+i); if(tr) tr.style.background=p.atingido?'var(--ok-soft)':''; });
 }
 
 /* ---------- Supervisora (todas as lojas) ---------- */
@@ -919,7 +955,14 @@ function pendencias(dados){
 }
 function renderFech(){
   const dados=fechamentoDados(), pend=pendencias(dados);
-  const totRec=dados.reduce((a,d)=>a+d.c.tot.rec,0), totIAF=dados.reduce((a,d)=>a+d.c.loja.bonusTotal,0), totCons=dados.reduce((a,d)=>a+d.ativos.length,0);
+  const soma=(arr,f)=>arr.reduce((a,x)=>a+f(x),0);
+  const cons=dados.flatMap(d=>d.ativos);
+  const gers=dados.map(({r})=>({r, g:computeGerente(r)}));
+  const sup=computeSupervisora(state.records);
+  const totRec=soma(cons,x=>N(x.rec)), totComR=soma(cons,x=>x.comR), totIAF=soma(cons,x=>x.bonus), totCons=soma(cons,x=>x.total);
+  const totGerCom=soma(gers,({g})=>g.comR), totGerPremio=soma(gers,({g})=>g.premio), totGer=soma(gers,({g})=>g.total);
+  const totGeral=totCons+totGer+sup.premio;
+  const tr='<span class="muted">–</span>';
   const consRows=dados.filter(d=>d.ativos.length).map(({r,ativos},li)=>ativos.map((x,i)=>`<tr class="${i===0&&li>0?'sep':''}">
       <td class="loja">${i===0?esc(r.loja):''}</td>
       <td class="name">${esc(x.nome)}</td>
@@ -928,8 +971,10 @@ function renderFech(){
       <td class="r num ${N(x.pm2)>=1?'pos':'neg'}">${pct(x.pm2)}</td>
       <td class="r num">${x.ok} de 9</td>
       <td><span class="pill ${PILL[x.fi]}" style="margin-top:0">${esc(x.faixa)}</span></td>
-      <td class="r num"><b>${pct(x.com)}</b></td>
-      <td class="r num">${brl(x.bonus)}</td></tr>`).join('')).join('');
+      <td class="r num">${pct(x.com)}</td>
+      <td class="r num">${brl(x.comR)}</td>
+      <td class="r num">${brl(x.bonus)}</td>
+      <td class="r num"><b>${brl(x.total)}</b></td></tr>`).join('')).join('');
   document.getElementById('tab-fech').innerHTML=`
     <div class="top" style="align-items:center">
       <h2>Fechamento ${state.mes?'· '+esc(state.mes):''}</h2>
@@ -937,32 +982,42 @@ function renderFech(){
     </div>
     <div id="xlsxMsg"></div>
     ${pend.length?`<div class="pend"><b>Pendências (${pend.length})</b> — confira antes de fechar:<ul>${pend.map(x=>`<li>${x}</li>`).join('')}</ul></div>`:`<div class="notice success">Tudo preenchido nas 6 lojas.</div>`}
+    <div class="kpis">
+      <div class="kpi"><span class="eyebrow">Total a pagar</span><span class="v">${brl(totGeral)}</span><span class="small muted">Consultores, gerentes e supervisora</span></div>
+      <div class="kpi"><span class="eyebrow">Consultores</span><span class="v">${brl(totCons)}</span><span class="small muted">Comissão ${brl(totComR)} + IAF ${brl(totIAF)}</span></div>
+      <div class="kpi"><span class="eyebrow">Gerentes</span><span class="v">${brl(totGer)}</span><span class="small muted">Comissão ${brl(totGerCom)}${totGerPremio?' + prêmios '+brl(totGerPremio):''}</span></div>
+      <div class="kpi"><span class="eyebrow">Supervisora</span><span class="v">${brl(sup.premio)}</span><span class="small muted">${pct(sup.pct)} do faturamento</span></div>
+    </div>
     <h2>Gerentes</h2>
     <div class="tbl-wrap"><table class="geral">
-      <thead><tr><th>Loja</th><th class="name">Gerente</th><th class="r">Receita da loja</th><th class="r">1º Desafio</th><th class="r">2º Desafio</th><th class="r">Indicadores IAF</th><th>Diamante</th><th>Faixa</th><th class="r">Comissão</th></tr></thead>
-      <tbody>${dados.map(({r})=>{ const g=computeGerente(r); return `<tr>
+      <thead><tr><th>Loja</th><th class="name">Gerente</th><th class="r">Receita da loja</th><th class="r">1º Desafio</th><th class="r">2º Desafio</th><th class="r">Indicadores</th><th>Diamante</th><th>Faixa</th><th class="r">Comissão %</th><th class="r">Comissão R$</th><th class="r">Prêmio</th><th class="r">Total a pagar</th></tr></thead>
+      <tbody>${gers.map(({r,g})=>{ const pr=g.modo==='premio'; return `<tr>
         <td class="loja">${esc(r.loja)}</td>
         <td class="name">${r.gerente?esc(r.gerente):'<span class="muted">—</span>'}</td>
         <td class="r num">${r.ger.receita==null?'<span class="neg">não digitada</span>':brl(r.ger.receita)}</td>
         <td class="r num ${g.q1>=1?'pos':'neg'}">${pct(g.q1)}</td>
-        <td class="r num ${g.q2>=1?'pos':'neg'}">${pct(g.q2)}</td>
-        <td class="r num">${g.iaf} de 3</td>
-        <td>${r.ger.diamante?'Sim':'Não'}</td>
+        <td class="r num ${pr?'':(g.q2>=1?'pos':'neg')}">${pr?tr:pct(g.q2)}</td>
+        <td class="r num">${pr?`${g.premios.filter(p=>p.atingido).length} de 3`:`${g.iaf} de 3`}</td>
+        <td>${pr?tr:(r.ger.diamante?'Sim':'Não')}</td>
         <td>${esc(g.faixa)}</td>
-        <td class="r num"><b>${pct(g.com)}</b></td></tr>`; }).join('')}</tbody>
+        <td class="r num">${pr?tr:pct(g.com)}</td>
+        <td class="r num">${pr?tr:brl(g.comR)}</td>
+        <td class="r num">${pr?brl(g.premio):tr}</td>
+        <td class="r num"><b>${brl(g.total)}</b></td></tr>`; }).join('')}</tbody>
+      <tfoot><tr><td></td><td class="name">Total</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="r num">${brl(totGerCom)}</td><td class="r num">${brl(totGerPremio)}</td><td class="r num">${brl(totGer)}</td></tr></tfoot>
     </table></div>
-    ${(()=>{ const s=computeSupervisora(state.records); return `<h2>Supervisora</h2>
+    <h2>Supervisora</h2>
     <div class="tbl-wrap"><table class="geral">
-      <thead><tr><th class="name">Supervisora</th><th class="r">Meta (${SUP_TXT()})</th><th class="r">Realizado (${SUP_TXT()})</th><th class="r">% atingido</th><th class="r">% aplicado</th><th class="r">Premiação</th></tr></thead>
-      <tbody><tr><td class="name">${state.supervisora?esc(state.supervisora):'<span class="muted">—</span>'}</td><td class="r num">${brl(s.meta,0)}</td><td class="r num">${brl(s.real)}</td><td class="r num ${s.ating>=1?'pos':'neg'}">${pct(s.ating)}</td><td class="r num">${pct(s.pct)}</td><td class="r num"><b>${brl(s.premio)}</b></td></tr></tbody>
-    </table></div>`; })()}
+      <thead><tr><th class="name">Supervisora</th><th class="r">Meta (${SUP_TXT()})</th><th class="r">Realizado (${SUP_TXT()})</th><th class="r">% atingido</th><th class="r">% aplicado</th><th class="r">Total a pagar</th></tr></thead>
+      <tbody><tr><td class="name">${state.supervisora?esc(state.supervisora):'<span class="muted">—</span>'}</td><td class="r num">${brl(sup.meta,0)}</td><td class="r num">${brl(sup.real)}</td><td class="r num ${sup.ating>=1?'pos':'neg'}">${pct(sup.ating)}</td><td class="r num">${pct(sup.pct)}</td><td class="r num"><b>${brl(sup.premio)}</b></td></tr></tbody>
+    </table></div>
     <h2>Consultores</h2>
-    ${totCons?`<div class="tbl-wrap"><table class="geral">
-      <thead><tr><th>Loja</th><th class="name">Consultor</th><th class="r">Receita</th><th class="r">% Meta 1</th><th class="r">% Meta 2</th><th class="r">Indicadores OK</th><th>Faixa</th><th class="r">Comissão</th><th class="r">Bonificação IAF</th></tr></thead>
+    ${cons.length?`<div class="tbl-wrap"><table class="geral">
+      <thead><tr><th>Loja</th><th class="name">Consultor</th><th class="r">Receita</th><th class="r">% Meta 1</th><th class="r">% Meta 2</th><th class="r">Indicadores OK</th><th>Faixa</th><th class="r">Comissão %</th><th class="r">Comissão R$</th><th class="r">Bonificação IAF</th><th class="r">Total a pagar</th></tr></thead>
       <tbody>${consRows}</tbody>
-      <tfoot><tr><td></td><td class="name">Total</td><td class="r num">${brl(totRec)}</td><td></td><td></td><td></td><td></td><td></td><td class="r num">${brl(totIAF)}</td></tr></tfoot>
+      <tfoot><tr><td></td><td class="name">Total</td><td class="r num">${brl(totRec)}</td><td></td><td></td><td></td><td></td><td></td><td class="r num">${brl(totComR)}</td><td class="r num">${brl(totIAF)}</td><td class="r num">${brl(totCons)}</td></tr></tfoot>
     </table></div>`:`<div class="empty">Nenhum consultor preenchido ainda. Escolha uma loja acima e preencha a aba <b>Realizado</b>.</div>`}
-    <p class="small muted" style="margin:0">Comissão de consultores e gerentes em %. Bonificação IAF e premiação da supervisora em R$.</p>`;
+    <p class="small muted" style="margin:0">Comissão em R$ = % da faixa × receita realizada (consultor: a própria receita; gerente: a receita da loja). Gerente com prêmio fixo e supervisora conforme as respectivas regras.</p>`;
 }
 
 // gera o .xlsx com duas abas: Consultores e Lojas (números com formato de R$ e %, prontos para somar)
@@ -973,10 +1028,10 @@ function baixarPlanilha(){
   const BRL='"R$" #,##0.00', PCT='0.0%', INT='0';
   const nb=(v)=>typeof v==='number'&&isFinite(v)?v:null;
   // aba Consultores
-  const hC=['Mês','Loja','Consultor','Receita realizada','Meta 1 individual','% Meta 1','Meta 2 individual','% Meta 2','Indicadores OK (de 9)','Faixa','Comissão %','Bonificação IAF total','IAF NPS + Omnicanal','IAF Cuidados Faciais','IAF Serviços / Item','IAF Loja Digital','IAF Boleto Médio'];
-  const fC=[null,null,null,BRL,BRL,PCT,BRL,PCT,INT,null,PCT,BRL,BRL,BRL,BRL,BRL,BRL];
+  const hC=['Mês','Loja','Consultor','Receita realizada','Meta 1 individual','% Meta 1','Meta 2 individual','% Meta 2','Indicadores OK (de 9)','Faixa','Comissão %','Comissão R$','Bonificação IAF total','IAF NPS + Omnicanal','IAF Cuidados Faciais','IAF Serviços / Item','IAF Loja Digital','IAF Boleto Médio','Total a pagar R$'];
+  const fC=[null,null,null,BRL,BRL,PCT,BRL,PCT,INT,null,PCT,BRL,BRL,BRL,BRL,BRL,BRL,BRL,BRL];
   const linhasC=[];
-  dados.forEach(({r,ativos})=>ativos.forEach(x=>linhasC.push([mes,r.loja,x.nome,N(x.rec),nb(x.m1),x.pm1,nb(x.m2),x.pm2,x.ok,x.faixa,x.com,x.bonus,...x.bon])));
+  dados.forEach(({r,ativos})=>ativos.forEach(x=>linhasC.push([mes,r.loja,x.nome,N(x.rec),nb(x.m1),x.pm1,nb(x.m2),x.pm2,x.ok,x.faixa,x.com,x.comR,x.bonus,...x.bon,x.total])));
   const sheet=(head,linhas,fmts,larg)=>{
     const ws=XLSX.utils.aoa_to_sheet([head,...linhas]);
     linhas.forEach((_,i)=>fmts.forEach((z,j)=>{ const a=XLSX.utils.encode_cell({r:i+1,c:j}); if(z&&ws[a]&&ws[a].t==='n') ws[a].z=z; }));
@@ -984,13 +1039,16 @@ function baixarPlanilha(){
     return ws;
   };
   const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, sheet(hC,linhasC,fC,[12,14,26,16,16,10,16,10,12,16,11,14,12,12,12,12,12]), 'Consultores');
+  XLSX.utils.book_append_sheet(wb, sheet(hC,linhasC,fC,[12,14,26,16,16,10,16,10,12,16,11,14,14,12,12,12,12,12,14]), 'Consultores');
   // aba Gerentes (3º indicador muda por loja: Serviços em qtd ou Resgate Fidelidade em %)
-  const hG=['Mês','Loja','Gerente','Receita da loja','Meta 1 loja','1º Desafio','Meta 2 loja','2º Desafio','ID Cliente % (realizado)','Skin % (realizado)','3º indicador','3º indicador (realizado)','Indicadores IAF (de 3)','Loja Diamante IAF','Faixa','Comissão %'];
-  const fG=[null,null,null,BRL,BRL,PCT,BRL,PCT,PCT,PCT,null,null,INT,null,null,PCT];
-  const linhasG=dados.map(({r})=>{ const g=computeGerente(r), t=gerInds(r.loja)[2];
-    return [mes,r.loja,r.gerente||'',nb(r.ger.receita),nb(r.metas.m1),g.q1,nb(r.metas.m2),g.q2,nb(r.ger.id),nb(r.ger.skin),t.label,nb(r.ger[t.k]),g.iaf,r.ger.diamante?'Sim':'Não',g.faixa,g.com]; });
-  const wsG=sheet(hG,linhasG,fG,[12,14,18,16,14,11,14,11,14,12,20,14,12,12,36,11]);
+  const hG=['Mês','Loja','Gerente','Receita da loja','Meta 1 loja','1º Desafio','Meta 2 loja','2º Desafio','ID Cliente % (realizado)','Skin % (realizado)','3º indicador','3º indicador (realizado)','Indicadores atingidos','Loja Diamante IAF','Faixa','Comissão %','Comissão R$','Prêmio R$','Total a pagar R$'];
+  const fG=[null,null,null,BRL,BRL,PCT,BRL,PCT,PCT,PCT,null,null,INT,null,null,PCT,BRL,BRL,BRL];
+  const linhasG=dados.map(({r})=>{ const g=computeGerente(r);
+    if(g.modo==='premio')   // gerente com prêmios fixos: 3º indicador = Nota NPS; sem 2º desafio, Diamante e comissão em %
+      return [mes,r.loja,r.gerente||'',nb(r.ger.receita),nb(r.metas.m1),g.q1,null,null,null,nb(r.ger.skin),'Nota NPS %',nb(r.ger.nps),g.premios.filter(p=>p.atingido).length,'',g.faixa,null,null,g.premio,g.total];
+    const t=gerInds(r.loja)[2];
+    return [mes,r.loja,r.gerente||'',nb(r.ger.receita),nb(r.metas.m1),g.q1,nb(r.metas.m2),g.q2,nb(r.ger.id),nb(r.ger.skin),t.label,nb(r.ger[t.k]),g.iaf,r.ger.diamante?'Sim':'Não',g.faixa,g.com,g.comR,null,g.total]; });
+  const wsG=sheet(hG,linhasG,fG,[12,14,18,16,14,11,14,11,14,12,20,14,12,12,36,11,14,12,14]);
   linhasG.forEach((l,i)=>{ const a=XLSX.utils.encode_cell({r:i+1,c:11}); if(wsG[a]&&wsG[a].t==='n') wsG[a].z=l[10].includes('%')?PCT:INT; });
   XLSX.utils.book_append_sheet(wb, wsG, 'Gerentes');
   // aba Supervisora

@@ -23,9 +23,11 @@ As regras de cálculo foram migradas a partir das planilhas originais e validada
 
 - Cadastro de metas e resultados por loja e por consultor, com validação das unidades (moeda, percentual, quantidade e tempo).
 - Cálculo da faixa de comissão de cada consultor, com base no atingimento das metas de venda e em nove indicadores de desempenho.
+- Cálculo da comissão em reais, aplicando o percentual da faixa sobre a receita realizada.
 - Cálculo das bonificações por indicador.
-- Cálculo da comissão das gerentes, com base nos desafios financeiros e nos indicadores da loja.
+- Cálculo da comissão das gerentes, com base nos desafios financeiros e nos indicadores da loja, e suporte a lojas com modelo de prêmios fixos por critério atingido.
 - Cálculo da premiação da supervisão, com base no faturamento das lojas sob sua gestão.
+- Apuração do total a pagar por pessoa e do total geral do fechamento.
 - Painel por loja, com visão geral de atingimento por indicador e detalhamento por consultor.
 - Relatório consolidado de fechamento, com indicação de pendências de preenchimento.
 - Exportação do fechamento em planilha Excel (.xlsx), com valores numéricos e formatação de moeda e percentual.
