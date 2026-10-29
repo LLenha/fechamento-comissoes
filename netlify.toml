@@ -1,0 +1,5 @@
+# Publicação pela linha de comando do Netlify (netlify deploy --prod).
+# A pasta "publicar" é gerada por tools/publicar.ps1 e não é versionada.
+[build]
+  publish = "publicar"
+  functions = "netlify/functions"

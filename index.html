@@ -1,0 +1,1117 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fechamento de Comissões</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
+<!-- leitor/gerador de planilhas, usado só no botão "Baixar planilha do fechamento" -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* Identidade visual: Poppins; verde #367C4E como cor primária e de resultado positivo (≥ 100%),
+   Vermelho #A42426 abaixo da meta, Roxo Escuro #8A2250 destaque, Branco Gelo #F5F5F5 nos cards.
+   Layout: barra da loja no topo, abas (Painel · Metas · Realizado · Regra); campos de digitar em cinza, como na planilha. */
+:root{
+  --bg:#FFFFFF; --surface:#F5F5F5; --ink:#2C2C2A; --muted:#888780; --line:#E5E5E5;
+  --input:#E7E7E4; --input-focus:#FFFFFF;
+  --accent:#367C4E; --accent-ink:#FFFFFF; --accent-soft:#E3EFE7;
+  --ok:#367C4E; --ok-soft:#E3EFE7; --ok-2:#5D9477; --bar-ok:#1D9E75;
+  --bad:#A42426; --bad-soft:#F7E3E3; --bar-bad:#E24B4A; --alert:#E23646;
+  --special:#8A2250; --special-ink:#FFFFFF;
+  --f-display:Poppins,"Segoe UI",system-ui,sans-serif;
+  --f-body:Poppins,"Segoe UI",system-ui,sans-serif;
+  --f-data:Poppins,"Segoe UI",system-ui,sans-serif;
+  color-scheme:light;   /* sempre tema claro, mesmo com o computador em modo escuro */
+}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45;margin:0}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:20px 48px;display:flex;flex-direction:column;gap:18px}
+h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:1.45rem;font-weight:700;color:var(--accent)}
+h2{font-size:1.2rem;font-weight:600}
+h3{font-size:1.05rem;font-weight:600}
+.num,.mono{font-family:var(--f-data);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.small{font-size:.82rem}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+button,select,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* topo */
+.top{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:end;justify-content:space-between}
+.top .title{display:flex;flex-direction:column;gap:2px}
+.actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 12px;cursor:pointer;font-weight:500;font-size:.88rem}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.danger{color:var(--bad)}
+.btn.danger.armed{background:var(--bad);color:var(--surface);border-color:var(--bad)}
+select.rec{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 10px;max-width:100%;font-weight:600}
+.file-btn{position:relative;overflow:hidden}
+.file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+
+.notice{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 14px;font-size:.88rem}
+.notice.error{border-color:var(--bad);background:var(--bad-soft)}
+.notice.success{border-color:var(--ok);background:var(--ok-soft)}
+
+/* faixa da loja */
+.info{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+.lbl{display:flex;flex-direction:column;gap:4px;font-size:.8rem;font-weight:600;color:var(--muted);min-width:0}
+.txt{background:var(--input);border:1px solid transparent;border-radius:7px;padding:7px 9px;width:100%;color:var(--ink);font-size:.95rem}
+.txt:focus{background:var(--input-focus);border-color:var(--accent);outline:none}
+.txt::placeholder{color:var(--muted)}
+select.txt{cursor:pointer}
+select.txt:invalid{color:var(--muted)}   /* "Selecione" em cinza enquanto nenhuma loja foi escolhida */
+select.txt option{color:var(--ink)}
+.serv-info{padding:8px 0;font-size:.92rem;font-weight:500;color:var(--ink)}
+.serv-info b{color:var(--accent)}
+.serv-info.muted{color:var(--muted);font-weight:400}
+.box.locked{background:transparent;border:1px dashed var(--line)}
+.box.locked input{cursor:not-allowed}
+.box.locked input::placeholder{color:var(--muted);font-family:var(--f-body);font-size:.78rem}
+
+/* indicador de dados compartilhados */
+.sync{font-size:.76rem;font-weight:600;border-radius:999px;padding:4px 10px;background:var(--surface);color:var(--muted);border:1px solid var(--line);white-space:nowrap}
+.sync.ok{background:var(--ok-soft);color:var(--ok);border-color:transparent}
+.sync.pend{color:var(--muted)}
+.sync.err{background:var(--bad-soft);color:var(--bad);border-color:transparent}
+/* barra de lojas */
+.lojas{display:flex;flex-wrap:wrap;gap:8px}
+.lojas button{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 14px;cursor:pointer;display:flex;flex-direction:column;align-items:flex-start;gap:0;min-width:118px;text-align:left}
+.lojas button b{font-family:var(--f-display);font-weight:600;font-size:.95rem}
+.lojas button span{font-size:.72rem;color:var(--muted)}
+.lojas button:hover{border-color:var(--accent)}
+.lojas button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.lojas button[aria-pressed="true"] span{color:var(--accent-soft)}
+.lojas button.fech{margin-left:auto}
+.lojas button.fech,.lojas button.fech2{border-color:var(--accent);color:var(--accent)}
+.lojas button.fech[aria-pressed="true"],.lojas button.fech2[aria-pressed="true"]{color:var(--accent-ink)}
+.ger-wrap{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:980px){.ger-wrap{grid-template-columns:minmax(0,1fr)}}
+.ger-ind{display:grid;grid-template-columns:minmax(120px,1.2fr) minmax(110px,1fr) minmax(110px,1fr) minmax(64px,auto);gap:8px 12px;align-items:center}
+.ger-ind > *{min-width:0}
+.ger-ind .h{font-size:.74rem;font-weight:600;color:var(--muted)}
+.ger-ind .lb{font-weight:600;font-size:.9rem}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;width:max-content}
+.seg button{border:0;background:transparent;padding:7px 16px;cursor:pointer;font-weight:600;font-size:.9rem}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.pend{border:1px solid var(--bad);background:var(--bad-soft);border-radius:10px;padding:10px 14px;font-size:.86rem}
+.pend ul{margin:6px 0 0;padding-left:18px}
+table.geral td.loja{color:var(--muted);font-weight:500}
+table.geral tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
+table.geral tr.sep td{border-top:2px solid var(--line)}
+
+/* abas */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tabs button{border:0;background:none;padding:10px 14px;cursor:pointer;font-family:var(--f-display);font-weight:600;font-size:1rem;color:var(--muted);border-bottom:3px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+section.panel{display:flex;flex-direction:column;gap:16px}
+
+/* campos numéricos com unidade */
+.f{display:flex;flex-direction:column;gap:4px;min-width:0}
+.f > span.name{font-size:.8rem;font-weight:600;color:var(--muted);display:flex;justify-content:space-between;gap:6px}
+.unit{font-family:var(--f-data);font-size:.7rem;font-weight:500;color:var(--accent);background:var(--accent-soft);border-radius:4px;padding:0 5px;white-space:nowrap;align-self:center}
+.box{display:flex;align-items:center;background:var(--input);border:1px solid transparent;border-radius:7px;min-width:0}
+.box:focus-within{background:var(--input-focus);border-color:var(--accent)}
+.box.err{border-color:var(--bad)}
+.box .pre,.box .suf{font-family:var(--f-data);font-size:.8rem;color:var(--muted);padding-inline:8px;white-space:nowrap}
+.box .pre{padding-right:0}.box .suf{padding-left:0}
+.box input{border:0;background:transparent;padding:7px 8px;width:100%;min-width:0;font-family:var(--f-data);font-variant-numeric:tabular-nums;font-size:.92rem;text-align:right;outline:none}
+.errmsg{color:var(--bad);font-size:.75rem}
+.grid-metas{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.dim{opacity:.55}
+
+/* tabela realizado */
+.tbl-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+table.real{border-collapse:separate;border-spacing:0;font-size:.85rem;min-width:100%}
+table.real th,table.real td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}
+table.real thead th{text-align:left;font-weight:600;font-size:.76rem;color:var(--muted);background:var(--surface);position:sticky;top:0;vertical-align:bottom}
+table.real thead th .unit{display:inline-block;margin-top:3px}
+table.real td.name,table.real th.name{position:sticky;left:0;background:var(--surface);z-index:1;min-width:170px}
+table.real td .box{min-width:96px}
+table.real td.w-brl .box{min-width:132px}
+table.real tfoot td{font-weight:600;border-bottom:0}
+/* visão geral */
+table.geral{border-collapse:separate;border-spacing:0;font-size:.86rem;min-width:100%}
+table.geral th,table.geral td{padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:middle}
+table.geral thead th{font-size:.74rem;font-weight:600;color:var(--muted);text-align:left;background:var(--surface)}
+table.geral tbody tr:last-child td{border-bottom:0}
+table.geral .r{text-align:right}
+table.geral td.name,table.geral th.name{position:sticky;left:0;background:var(--surface);font-weight:600;z-index:1}
+table.geral td.cell.hit{background:var(--ok-soft);color:var(--ok);font-weight:600}
+table.geral td.cell.miss{color:var(--bad)}
+.x{border:0;background:none;color:var(--muted);cursor:pointer;font-size:1.1rem;padding:6px}
+.x:hover{color:var(--bad)}
+
+/* painel */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.kpi .v{font-family:var(--f-data);font-size:1.3rem;font-weight:500;font-variant-numeric:tabular-nums}
+.bar{height:6px;border-radius:3px;background:var(--input);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--bar-bad);border-radius:3px}
+.bar.done i{background:var(--bar-ok)}
+.pos{color:var(--ok)}.neg{color:var(--bad)}
+.cons-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
+@media (max-width:420px){.cons-list{grid-template-columns:1fr}}
+.cons{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.cons-head{display:flex;justify-content:space-between;gap:10px;align-items:start}
+.cons-head h3{overflow-wrap:anywhere}
+.com{text-align:right;flex-shrink:0}
+.com .v{font-family:var(--f-data);font-size:1.6rem;font-weight:500;line-height:1}
+.pill{display:inline-block;font-size:.75rem;font-weight:600;border-radius:999px;padding:2px 10px;margin-top:6px}
+.p-sup{background:var(--special);color:var(--special-ink)}
+.p-2{background:var(--ok);color:var(--accent-ink)}
+.p-1{background:var(--ok-soft);color:var(--ok)}
+.p-f1{background:transparent;color:var(--ok-2);box-shadow:inset 0 0 0 1px var(--ok-2)}
+.p-ini{background:var(--input);color:var(--muted)}
+.p-nd{background:var(--bad-soft);color:var(--bad)}
+.metas2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mt{display:flex;flex-direction:column;gap:4px;min-width:0}
+.mt .row{display:flex;justify-content:space-between;gap:6px;font-size:.82rem}
+.chips{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.chip{border-radius:8px;padding:6px 8px;background:var(--bg);display:flex;flex-direction:column;gap:1px;min-width:0}
+.chip .k{font-size:.7rem;color:var(--muted);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip .v{font-family:var(--f-data);font-size:.85rem;color:var(--bad);font-variant-numeric:tabular-nums}
+.chip.ok{background:var(--ok-soft)}
+.chip.ok .v{color:var(--ok);font-weight:500}
+.bonus{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border-top:1px solid var(--line);padding-top:12px}
+.bonus .tot{font-family:var(--f-data);font-weight:500;margin-right:auto}
+.bchip{font-size:.72rem;border-radius:999px;padding:2px 8px;border:1px solid var(--line);color:var(--muted)}
+.bchip.on{border-color:var(--ok);color:var(--ok);background:var(--ok-soft)}
+.empty{background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:24px;text-align:center;color:var(--muted)}
+
+/* regra */
+table.regra{border-collapse:collapse;width:100%;font-size:.88rem}
+table.regra th,table.regra td{padding:8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+table.regra th{font-size:.76rem;color:var(--muted)}
+table.regra .box{max-width:150px}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
+@media (max-width:420px){.two{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:no-preference){.bar i{transition:width .3s ease}}
+[hidden]{display:none!important}
+/* celular */
+@media (max-width:600px){
+  .wrap{padding-block:14px 40px;gap:14px}
+  h1{font-size:1.2rem}
+  .top{gap:10px}
+  .info{grid-template-columns:1fr 1fr;padding:12px;gap:10px}
+  .tabs{gap:0}
+  .tabs button{padding:9px 7px;font-size:.84rem;flex:1 1 auto}
+  .kpis{grid-template-columns:1fr 1fr;gap:10px}
+  .kpi{padding:12px}
+  .kpi:first-child{grid-column:1 / -1}   /* receita em cima, os dois desafios lado a lado */
+  .kpi .v{font-size:1.05rem}
+  .cons{padding:14px}
+  .grid-metas{grid-template-columns:1fr 1fr;gap:10px}
+  .card{padding:14px}
+  table.real td.name,table.real th.name{min-width:128px}
+  .lojas{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+  .lojas button{min-width:0;padding:7px 9px}
+  .lojas button.fech,.lojas button.fech2{grid-column:span 3;margin-left:0;align-items:center}
+  .lojas{grid-template-columns:repeat(6,1fr)} .lojas button{grid-column:span 2}
+  .lojas button.fech,.lojas button.fech2{grid-column:span 3}
+  .ger-ind{grid-template-columns:1fr 1fr;}
+  .ger-ind .h{display:none}
+  .ger-ind .lb{grid-column:1 / -1;margin-top:6px}
+  .top .actions .lbl{flex-wrap:wrap}
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div class="title">
+      <span class="eyebrow">Comissões · Rede de lojas · Demonstração</span>
+      <h1>Fechamento de Comissões</h1>
+    </div>
+    <div class="actions">
+      <label class="lbl" for="i-mes" style="flex-direction:row;align-items:center;gap:8px">Mês do fechamento<input id="i-mes" class="txt" data-global="mes" placeholder="Mês" style="width:170px"></label>
+      <span class="sync" id="syncStatus" role="status" hidden></span>
+      <button class="btn" id="btnNew" type="button" title="Em todas as lojas: mantém gerente, consultores e metas padrão; apaga o realizado e as metas da loja">Começar mês novo</button>
+    </div>
+  </header>
+
+  <div class="notice" id="avisoDemo">
+    <b>Versão de demonstração.</b> Este projeto foi desenvolvido para uma empresa do varejo e está em uso com dados reais. Para preservar informações confidenciais, nesta versão os nomes de lojas e pessoas, os valores e as regras de comissão foram substituídos por dados fictícios, mantendo a mesma lógica de cálculo.
+    <div class="actions" style="margin-top:8px"><button class="btn" type="button" id="btnExemplo">Restaurar dados de exemplo</button></div>
+  </div>
+
+  <p class="small muted" style="margin:0">Escolha a loja, preencha os campos cinzas e confira o resultado. Quando as 6 lojas estiverem prontas, abra <b>Fechamento</b> para ver tudo junto e baixar a planilha. <span id="introDados">Os dados ficam salvos neste computador, no navegador em que o arquivo foi aberto.</span></p>
+  <div id="syncAviso" hidden></div>
+
+  <nav class="lojas" id="lojaBar" aria-label="Lojas"></nav>
+
+  <section class="panel" id="tab-fech" hidden></section>
+  <section class="panel" id="tab-sup" hidden></section>
+
+  <div class="info" id="lojaInfo">
+    <div class="lbl">Loja<div id="lojaNome" class="serv-info"></div></div>
+    <label class="lbl" for="i-ger">Gerente<input id="i-ger" class="txt" data-info="gerente" placeholder="Nome"></label>
+    <div class="lbl">Tem serviços?
+      <div id="servInfo" class="serv-info"></div>
+    </div>
+  </div>
+
+  <nav class="tabs" role="tablist" id="lojaTabs">
+    <button role="tab" data-tab="painel" aria-selected="true">Painel</button>
+    <button role="tab" data-tab="metas" aria-selected="false">Metas do mês</button>
+    <button role="tab" data-tab="real" aria-selected="false">Realizado</button>
+    <button role="tab" data-tab="ger" aria-selected="false">Gerente</button>
+    <button role="tab" data-tab="regra" aria-selected="false">Regra</button>
+  </nav>
+
+  <div id="lojaView" style="display:contents">
+  <section class="panel" id="tab-painel"></section>
+  <section class="panel" id="tab-metas" hidden></section>
+  <section class="panel" id="tab-real" hidden></section>
+  <section class="panel" id="tab-ger" hidden></section>
+  <section class="panel" id="tab-regra" hidden></section>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   UNIDADES
+   brl0  R$ sem centavos   (Meta 1/Meta 2)
+   brl   R$ com centavos   (Receita, Boleto Médio)
+   pct   percentual        (guardado como fração: 29% = 0,29, igual ao Excel)
+   int   número inteiro    (Serviços, Respostas NPS)
+   dec   número decimal    (Item, formato 0,0)
+   time  tempo h:mm:ss     (Loja Digital; guardado em segundos)
+   ============================================================ */
+const FIELDS = [
+  {k:'bt',      label:'BT%',           unit:'pct'},
+  {k:'bp',      label:'BP%',           unit:'pct'},
+  {k:'id',      label:'ID%',           unit:'pct'},
+  {k:'skin',    label:'Skin %',        unit:'pct'},
+  {k:'item',    label:'Item',          unit:'dec'},
+  {k:'serv',    label:'Serviços',      unit:'int'},
+  {k:'resg',    label:'Resgate%',      unit:'pct'},
+  {k:'bol',     label:'Boleto Médio',  unit:'brl'},
+  {k:'b1',      label:'Boleto 1',      unit:'pct'},
+  {k:'npsResp', label:'Respostas NPS', unit:'int'},
+  {k:'npsNota', label:'Nota NPS %',    unit:'pct'},
+  {k:'ld',      label:'Loja Digital',  unit:'time'},
+];
+const UNIT_TAG = {brl0:'R$', brl:'R$', pct:'%', int:'qtd', dec:'nº', time:'h:mm:ss'};
+
+const DEFAULT_REGRA = () => ({
+  bonus: [80, 40, 40, 40, 40],
+  bonusNome: ['NPS + Omnicanal + 12 Registros','Cuidados Faciais','12 serviços de beleza','Loja Digital','Boleto Médio'],
+  faixas: [
+    {nome:'Faixa inicial', ating:'Até 90%',          ind:0, com:0.010},
+    {nome:'Faixa 1',       ating:'De 90% a 99,9%',   ind:3, com:0.015},
+    {nome:'1ª Meta',       ating:'1ª meta OK',       ind:4, com:0.020},
+    {nome:'2ª Meta',       ating:'2ª meta OK',       ind:5, com:0.025},
+    {nome:'Superação',     ating:'+ 2ª meta + loja', ind:7, com:0.030},
+  ],
+});
+
+function emptyRow(){ const r={nome:'',m1:null,m2:null,rec:null}; FIELDS.forEach(f=>r[f.k]=null); return r; }
+function emptyMetas(){ const m={m1:null,m2:null}; FIELDS.forEach(f=>m[f.k]=null); return m; }
+// Serviços × Item: Oeste e Norte não têm serviços (contam Item); as demais lojas contam Serviços
+const LOJAS_SEM_SERVICO=['Oeste','Norte'];
+function servicosDaLoja(loja){ return !LOJAS_SEM_SERVICO.includes(loja); }
+// metas que já vêm preenchidas (iguais para todas as lojas; a gerente pode ajustar)
+const METAS_PADRAO = {ld:10*60, npsNota:0.90, npsResp:12, serv:12, skin:0.03, bt:0.30, bp:0.32, id:1.10, resg:0.50, b1:0.35};
+function newRecord(){ return {id:'r'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), loja:'', mes:'', gerente:'', servicos:true, metas:Object.assign(emptyMetas(),METAS_PADRAO), rows:[emptyRow(),emptyRow(),emptyRow()], regra:DEFAULT_REGRA(), padrao:true}; }
+
+/* ============================================================
+   MOTOR DE CÁLCULO
+   N() = célula vazia vale 0; ratio() = IFERROR(a/b, 0).
+   ============================================================ */
+function N(v){ return (typeof v==='number' && isFinite(v)) ? v : 0; }
+function ratio(a,b){ const d=N(b); return d===0 ? 0 : N(a)/d; }
+function hasName(r){ return typeof r.nome==='string' && r.nome.trim()!==''; }
+
+function compute(rec){
+  const m=rec.metas, F=rec.regra.faixas, B=rec.regra.bonus, serv=rec.servicos;
+  const tot={m1:0,m2:0,rec:0};
+  rec.rows.forEach(r=>{ tot.m1+=N(r.m1); tot.m2+=N(r.m2); tot.rec+=N(r.rec); });   // B23, C23, D23
+  // Receita da loja: a informada na aba Gerente (a mesma da gerente e da supervisora);
+  // sem esse dado, usa a soma dos consultores.
+  const recLoja = rec.ger ? N(rec.ger.receita) : tot.rec;
+  const d1=ratio(recLoja,m.m1), d2=ratio(recLoja,m.m2);                             // D38, D39
+  const rows=rec.rows.map(r=>{
+    if(!hasName(r)) return {ativo:false};
+    // 'Indicadores e Regra'!B:J — 9 indicadores (realizado ÷ meta; ok quando ≥ 100%)
+    const npsOk = N(m.npsNota)>0 && N(m.npsResp)>0 && N(r.npsNota)>=N(m.npsNota) && N(r.npsResp)>=N(m.npsResp);
+    const ind=[
+      {k:'nps',  label:'NPS + Reg.',   v:npsOk?1:0, bin:true},
+      serv ? {k:'serv', label:'Serviços', v:ratio(r.serv,m.serv)} : {k:'item', label:'Item', v:ratio(r.item,m.item)},
+      {k:'bol',  label:'Bol. Médio',   v:ratio(r.bol,m.bol)},
+      {k:'skin', label:'Cuidados Faciais',v:ratio(r.skin,m.skin)},
+      {k:'resg', label:'Resgates',     v:ratio(r.resg,m.resg)},
+      // Boleto 1: quanto MENOR, melhor — OK quando o realizado (preenchido) é ≤ a meta.
+      {k:'b1',   label:'Boleto 1 (menor melhor)', v:r.b1, lower:true,
+       ok: N(m.b1)>0 && typeof r.b1==='number' && r.b1<=m.b1},
+      {k:'bt',   label:'BT%',          v:ratio(r.bt,m.bt)},
+      {k:'bp',   label:'BP%',          v:ratio(r.bp,m.bp)},
+      {k:'id',   label:'ID%',          v:ratio(r.id,m.id)},
+    ];
+    ind.forEach(x=>{ if(x.ok===undefined) x.ok = x.v>=1; });
+    const ok=ind.filter(x=>x.ok).length;                                             // K
+    const pm1=ratio(r.rec,r.m1), pm2=ratio(r.rec,r.m2);                               // B27, C27
+    // F27 — comissão
+    let com;
+    if(pm1===0) com=0;
+    else if(pm2>=1 && ok>=F[4].ind && d1>=1 && d2>=1) com=F[4].com;
+    else if(pm2>=1 && ok>=F[3].ind) com=F[3].com;
+    else if(pm1>=1 && ok>=F[2].ind) com=F[2].com;
+    else if(pm1>=0.9 && ok>=F[1].ind) com=F[1].com;
+    else com=F[0].com;
+    // E27 — nome da faixa (procura pelo valor da comissão, de cima para baixo, como a fórmula)
+    let faixa, fi;
+    if(pm1===0){ faixa='Meta não definida'; fi=-1; }
+    else { fi=[4,3,2,1].find(i=>com===F[i].com); if(fi===undefined) fi=0; faixa=F[fi].nome; }
+    // 'Indicadores e Regra'!B15:F15 — bonificações IAF
+    const bon=[
+      npsOk ? B[0] : 0,
+      (N(m.skin)>0 && N(r.skin)>=N(m.skin)) ? B[1] : 0,
+      serv ? ((N(m.serv)>0 && N(r.serv)>=N(m.serv)) ? B[2] : 0)
+           : ((N(m.item)>0 && N(r.item)>=N(m.item)) ? B[2] : 0),
+      (N(m.ld)>0 && N(r.ld)>0 && N(r.ld)<N(m.ld)) ? B[3] : 0,
+      (N(m.bol)>0 && N(r.bol)>=N(m.bol)) ? B[4] : 0,
+    ];
+    const bonus=bon.reduce((a,b)=>a+b,0);                                             // G15
+    return {ativo:true, nome:r.nome, m1:r.m1, m2:r.m2, rec:r.rec, pm1, pm2, ok, faixa, fi, com, bon, bonus,
+            f1:Math.max(0,N(r.m1)-N(r.rec)), f2:Math.max(0,N(r.m2)-N(r.rec)),         // H27, I27
+            faltam:9-ok, ind};                                                        // J27
+  });
+  const bonusTotal=rows.reduce((a,r)=>a+(r.ativo?r.bonus:0),0);                       // G35
+  return {rows, tot, loja:{d1,d2,rec:recLoja, f1:Math.max(0,N(m.m1)-recLoja), f2:Math.max(0,N(m.m2)-recLoja), bonusTotal}};
+}
+window.calcEngine = compute;
+
+/* ============================================================
+   GERENTE E SUPERVISORA
+   ============================================================ */
+// 3º indicador IAF da gerente, por loja. 'serv' = Serviços (qtd) · 'resg' = Resgate Fidelidade %
+const GERENTE_3IND = {'Centro':'serv','Sul':'serv','Leste':'serv','Litoral':'resg','Oeste':'resg','Norte':'resg'};
+const GER_METAS_PADRAO = {id:1.15, skin:0.03, serv:40, resg:0.50};
+// faixas da gerente: mesmos critérios e mesmos % em todas as lojas
+const GER_FAIXAS = [
+  {nome:'Vender 70% do 1º desafio',              ating:0.7},
+  {nome:'Vender 80% do 1º desafio',              ating:0.8},
+  {nome:'Vender 90% do 1º desafio',              ating:0.9},
+  {nome:'Superar 1º desafio + 3 indicadores IAF', ating:1, iaf:3},
+  {nome:'Superar 2º desafio + Loja Diamante IAF', ating:1, diamante:true},
+];
+const GER_PCT = {padrao:[0.006,0.007,0.008,0.009,0.010]};   // mesma tabela para todas as lojas
+function gerPct(loja){ return GER_PCT[loja] || GER_PCT.padrao; }
+function emptyGer(){ return {receita:null, diamante:false, metas:Object.assign({},GER_METAS_PADRAO), id:null, skin:null, serv:null, resg:null}; }
+function gerInds(loja){
+  const t=GERENTE_3IND[loja]||'serv';
+  return [{k:'id',label:'ID Cliente %',unit:'pct'},{k:'skin',label:'Skin %',unit:'pct'},
+          t==='serv'?{k:'serv',label:'Serviços (qtd)',unit:'int'}:{k:'resg',label:'Resgate Fidelidade %',unit:'pct'}];
+}
+function computeGerente(r){
+  const g=r.ger, P=gerPct(r.loja);
+  const q1=ratio(g.receita,r.metas.m1), q2=ratio(g.receita,r.metas.m2);
+  const ind=gerInds(r.loja).map(i=>({...i, meta:g.metas[i.k], real:g[i.k], v:ratio(g[i.k],g.metas[i.k])}));
+  const iaf=ind.filter(i=>i.v>=1).length;
+  // P27: =IF(AND(2º desafio>=100%, Diamante="Sim"), F5, IF(AND(1º desafio>=100%, IAF>=3), F4, IF(1º>=90%, F3, IF(1º>=80%, F2, IF(1º>=70%, F1, 0)))))
+  let fi=-1;
+  if(q2>=1 && g.diamante) fi=4;
+  else if(q1>=1 && iaf>=3) fi=3;
+  else if(q1>=0.9) fi=2;
+  else if(q1>=0.8) fi=1;
+  else if(q1>=0.7) fi=0;
+  return {q1,q2,ind,iaf,fi,com:fi<0?0:P[fi], faixa:fi<0?'Abaixo de 70%':GER_FAIXAS[fi].nome};
+}
+// supervisora: meta = soma das Metas 1 das lojas dela; realizado = soma das receitas dessas lojas
+// As lojas Sul e Leste não entram na comissão da supervisora.
+const SUP_FORA=['Sul','Leste'];
+const supLojas=records=>records.filter(r=>!SUP_FORA.includes(r.loja));
+const SUP_TXT=()=>`${LOJAS.length-SUP_FORA.length} lojas`;
+const SUP_FAIXAS=[{ating:0.8,pct:0.003},{ating:0.9,pct:0.004},{ating:1,pct:0.005},{ating:1.1,pct:0.006}];
+function computeSupervisora(records){
+  records=supLojas(records);
+  const meta=records.reduce((a,r)=>a+N(r.metas.m1),0), real=records.reduce((a,r)=>a+N(r.ger.receita),0);
+  const ating=ratio(real,meta);
+  let fi=-1; SUP_FAIXAS.forEach((f,i)=>{ if(ating>=f.ating) fi=i; });
+  const pct=fi<0?0:SUP_FAIXAS[fi].pct;
+  return {meta, real, ating, fi, pct, premio:pct*real};
+}
+
+/* ============================================================
+   FORMATAÇÃO E LEITURA DE NÚMEROS (padrão brasileiro)
+   ============================================================ */
+const nf=(min,max)=>new Intl.NumberFormat('pt-BR',{minimumFractionDigits:min,maximumFractionDigits:max});
+const NF0=nf(0,0), NF1=nf(1,1), NF2=nf(2,2), NF02=nf(0,2), NF04=nf(0,4);
+function brl(v,dec=2){ return 'R$ '+(dec===0?NF0:NF2).format(N(v)); }
+function pct(v){ return NF1.format(N(v)*100)+'%'; }
+function hms(s){ s=Math.round(N(s)); const h=Math.floor(s/3600), mi=Math.floor(s%3600/60), se=s%60; return h+':'+String(mi).padStart(2,'0')+':'+String(se).padStart(2,'0'); }
+
+function normNumber(str){
+  let s=String(str).trim().replace(/^R\$\s*/i,'').replace(/%$/,'').replace(/\s/g,'');
+  if(s==='') return '';
+  if(s.includes(',') && s.includes('.')) s=s.replace(/\./g,'').replace(',','.');
+  else if(s.includes(',')) s=s.replace(',','.');
+  else if(/^-?\d{1,3}(\.\d{3})+$/.test(s)) s=s.replace(/\./g,'');      // "73.333" = milhar
+  return /^-?\d+(\.\d+)?$/.test(s) ? s : null;
+}
+// devolve {v} ou {err}
+function parseUnit(str,unit){
+  if(String(str).trim()==='') return {v:null};
+  if(unit==='time'){
+    const p=String(str).trim().split(':');
+    if(p.length<2 || p.length>3 || p.some(x=>!/^\d+$/.test(x))) return {err:'Use h:mm:ss (ex.: 0:12:00 = 12 minutos)'};
+    let [h,mi,se]= p.length===3 ? p.map(Number) : [0,...p.map(Number)];   // "12:30" = 12 min 30 s
+    if(mi>59||se>59) return {err:'Minutos e segundos vão até 59'};
+    return {v:h*3600+mi*60+se};
+  }
+  const s=normNumber(str);
+  if(s===null) return {err:'Digite só números (ex.: '+({pct:'29,5',brl:'1.520,54',brl0:'220.000',int:'10',dec:'2,3'}[unit])+')'};
+  if(unit==='pct') return {v:Number(s+'e-2')};          // 29 → 0,29 sem erro de arredondamento
+  if(unit==='int'){ if(!/^-?\d+$/.test(s)) return {err:'Número inteiro (sem vírgula)'}; return {v:Number(s)}; }
+  return {v:Number(s)};
+}
+function showUnit(v,unit){
+  if(v===null || v===undefined || v==='') return '';
+  switch(unit){
+    case 'pct': return NF04.format(v*100);
+    case 'brl': case 'brl0': return NF02.format(v);
+    case 'int': return NF0.format(v);
+    case 'dec': return NF02.format(v);
+    case 'time': return hms(v);
+  }
+}
+
+/* ============================================================
+   ESTADO (salvo neste navegador)
+   ============================================================ */
+// Um registro por loja, todas no mesmo mês.
+const KEY='fechamento-demo-v1';
+const LOJAS=['Centro','Norte','Sul','Leste','Oeste','Litoral'];
+function lojaRecord(loja){ const r=newRecord(); r.loja=loja; r.servicos=servicosDaLoja(loja); r.ger=emptyGer(); return r; }
+let state=load();
+function load(){
+  let s=null;
+  try{ s=JSON.parse(localStorage.getItem(KEY)); }catch(e){}
+  if(!(s && Array.isArray(s.records))) return dadosExemplo();   // primeira visita: abre com os dados de exemplo
+  return normalizar(s);
+}
+/* Dados de exemplo (fictícios), carregados na primeira visita e pelo botão "Restaurar dados de exemplo". */
+function dadosExemplo(){
+  let semente=20261031;   // gerador pseudoaleatório com semente fixa: os exemplos são sempre os mesmos
+  const rnd=()=>{ semente|=0; semente=semente+0x6D2B79F5|0; let t=Math.imul(semente^semente>>>15,1|semente); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; };
+  const var_=(v,a,b,casas=4)=>Math.round(v*(a+(b-a)*rnd())*10**casas)/10**casas;
+  const nomes=['Ana','Bruno','Carla','Daniel','Eduarda','Felipe','Gabriela','Heloísa','Igor','Joana','Lucas','Mariana','Nina','Otávio','Paula','Rafael','Sofia','Tiago','Vitória','Yasmin','Caio','Lívia'];
+  const gerentes=['Patrícia','Renata','Camila','Fernanda','Larissa','Beatriz'];
+  let n=0;
+  const records=LOJAS.map((loja,li)=>{
+    const r=lojaRecord(loja); r.gerente=gerentes[li];
+    const m1=[180000,150000,240000,200000,160000,170000][li];
+    Object.assign(r.metas,{m1, m2:Math.round(m1*1.1), item:2.3, bol:150});
+    const qtd=[4,3,4,3,3,4][li], ind=Math.round(m1/qtd/100)*100;
+    r.rows=Array.from({length:qtd},()=>{ const nome=`${101+n} - ${nomes[n++%nomes.length]}`, ating=0.82+0.36*rnd();
+      return Object.assign(emptyRow(),{nome, m1:ind, m2:Math.round(ind*1.1), rec:Math.round(ind*ating*100)/100,
+        bt:var_(0.30,0.8,1.25), bp:var_(0.32,0.8,1.25), id:var_(1.10,0.92,1.12), skin:var_(0.03,0.75,1.3), item:var_(2.3,0.9,1.15,2),
+        serv:Math.round(12*(0.7+0.6*rnd())), resg:var_(0.50,0.9,1.15), bol:var_(150,0.9,1.15,2), b1:var_(0.35,0.8,1.2),
+        npsResp:Math.round(12*(0.7+0.6*rnd())), npsNota:var_(0.90,0.95,1.08), ld:Math.round(600*(0.7+0.6*rnd()))}); });
+    const recLoja=r.rows.reduce((a,x)=>a+x.rec,0)*1.04;
+    Object.assign(r.ger,{receita:Math.round(recLoja*100)/100, diamante:li%3===0, id:var_(1.15,0.95,1.1), skin:var_(0.03,0.85,1.2), serv:Math.round(40*(0.85+0.3*rnd())), resg:var_(0.50,0.95,1.1)});
+    return r;
+  });
+  return normalizar({mes:'Outubro/2026', supervisora:'Marcela', loja:LOJAS[0], view:'fech', records});
+}
+function normalizar(s){
+  if(!(s && Array.isArray(s.records))) s={mes:'', loja:LOJAS[0], view:'loja', records:[]};
+  // garante as 6 lojas, na ordem fixa
+  s.records=LOJAS.map(l=>s.records.find(r=>r.loja===l) || lojaRecord(l));
+  s.records.forEach(r=>{
+    r.regra=DEFAULT_REGRA(); r.servicos=servicosDaLoja(r.loja);   // regra fixa; serviços pela loja
+    if(!r.ger) r.ger=emptyGer();                                    // dados salvos antes da parte da gerente
+    r.ger.metas=Object.assign({},GER_METAS_PADRAO,r.ger.metas);
+  });
+  if(!LOJAS.includes(s.loja)) s.loja=LOJAS[0];
+  if(!['loja','fech','sup'].includes(s.view)) s.view='loja';
+  if(typeof s.supervisora!=='string') s.supervisora='';
+  return s;
+}
+function saveLocal(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
+function save(){ saveLocal(); agendarEnvio(); }
+function cur(){ return state.records.find(r=>r.loja===state.loja) || state.records[0]; }
+
+/* ============================================================
+   DADOS COMPARTILHADOS (somente na versão publicada no Netlify)
+   Os dados são criptografados no navegador (AES-256-GCM) antes do envio;
+   o servidor guarda apenas o conteúdo cifrado. A chave e o código de acesso
+   são derivados da senha da tela de acesso (HKDF-SHA256).
+   ============================================================ */
+const NUVEM = (()=>{ try{ return (location.protocol==='https:' && window.__acesso && window.__acesso.mestre) ? window.__acesso : null; }catch(_){ return null; } })();
+const SYNC_KEY = KEY+'-sync';
+const sync = (()=>{ let s={}; try{ s=JSON.parse(localStorage.getItem(SYNC_KEY)||'{}'); }catch(_){}
+  return {versao:Number(s.versao)||0, pendente:!!s.pendente, timer:null, enviando:false, conflito:false, k:null}; })();
+function salvarSync(){ try{ localStorage.setItem(SYNC_KEY, JSON.stringify({versao:sync.versao, pendente:sync.pendente})); }catch(_){} }
+const cB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const cParaB64 = buf => { const b=new Uint8Array(buf); let s=''; for(let i=0;i<b.length;i+=0x8000) s+=String.fromCharCode.apply(null,b.subarray(i,i+0x8000)); return btoa(s); };
+
+async function chavesNuvem(){
+  if(sync.k) return sync.k;
+  const base = await crypto.subtle.importKey('raw', cB64(NUVEM.mestre), 'HKDF', false, ['deriveBits','deriveKey']);
+  const te = new TextEncoder(), salt = te.encode('fechamento-comissoes');
+  const token = await crypto.subtle.deriveBits({name:'HKDF', hash:'SHA-256', salt, info:te.encode('acesso')}, base, 256);
+  const dados = await crypto.subtle.deriveKey({name:'HKDF', hash:'SHA-256', salt, info:te.encode('dados')}, base, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']);
+  return sync.k = {token:cParaB64(token), dados};
+}
+async function api(method, corpo){
+  const k = await chavesNuvem();
+  const r = await fetch('/api/dados', {method, cache:'no-store', headers:{'x-acesso':k.token, 'content-type':'application/json'}, body: corpo ? JSON.stringify(corpo) : undefined});
+  let j=null; try{ j=await r.json(); }catch(_){}
+  return {status:r.status, j};
+}
+async function cifrar(obj){
+  const k=await chavesNuvem(), iv=crypto.getRandomValues(new Uint8Array(12));
+  const ct=await crypto.subtle.encrypt({name:'AES-GCM', iv}, k.dados, new TextEncoder().encode(JSON.stringify(obj)));
+  return {iv:cParaB64(iv), conteudo:cParaB64(ct)};
+}
+async function decifrar(iv, conteudo){
+  const k=await chavesNuvem();
+  const pt=await crypto.subtle.decrypt({name:'AES-GCM', iv:cB64(iv)}, k.dados, cB64(conteudo));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+// só os dados do fechamento são compartilhados; a loja e a tela abertas continuam de cada pessoa
+function dadosCompartilhados(){ return {mes:state.mes, supervisora:state.supervisora, records:state.records}; }
+function aplicarRemoto(d){
+  state = normalizar({...state, mes:d.mes||'', supervisora:d.supervisora||'', records:Array.isArray(d.records)?d.records:[]});
+  saveLocal(); renderAll();
+}
+const hora = iso => { try{ return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(_){ return ''; } };
+function statusSync(txt, tipo=''){ const el=document.getElementById('syncStatus'); if(el){ el.textContent=txt; el.className='sync '+tipo; el.hidden=!txt; } }
+function avisoSync(html){ const el=document.getElementById('syncAviso'); if(el){ el.innerHTML=html||''; el.hidden=!html; } }
+
+function agendarEnvio(){
+  if(!NUVEM) return;
+  sync.pendente=true; salvarSync();
+  if(sync.conflito) return;
+  statusSync('Alterações não enviadas…','pend');
+  clearTimeout(sync.timer); sync.timer=setTimeout(enviar, 1200);
+}
+async function enviar(forcar=false){
+  if(!NUVEM || sync.enviando) return;
+  sync.enviando=true; statusSync('Salvando para todos…','pend');
+  try{
+    const pacote=await cifrar(dadosCompartilhados());
+    const r=await api('PUT', {...pacote, versaoBase:sync.versao, forcar});
+    if(r.status===200){
+      sync.versao=r.j.versao; sync.pendente=false; sync.conflito=false; salvarSync(); avisoSync('');
+      statusSync('Salvo para todos · '+hora(r.j.atualizadoEm),'ok');
+    }else if(r.status===409){
+      sync.conflito=true;
+      statusSync('Alterado por outra pessoa','err');
+      avisoSync(`<div class="pend"><b>Os dados foram alterados por outra pessoa</b> em ${esc(hora(r.j&&r.j.atualizadoEm))}, depois que você abriu o app. Suas alterações mais recentes ainda não foram salvas para todos.
+        <div class="actions" style="margin-top:8px"><button class="btn primary" type="button" data-sync="recarregar">Carregar a versão mais recente</button>
+        <button class="btn danger" type="button" data-sync="manter">Manter as minhas alterações</button></div>
+        <span class="small">Carregar descarta as alterações deste computador. Manter substitui o que a outra pessoa salvou.</span></div>`);
+    }else if(r.status===401){
+      statusSync('Acesso recusado','err');
+      avisoSync('<div class="pend"><b>O servidor recusou o acesso.</b> A senha pode ter sido alterada. Recarregue a página e entre novamente.</div>');
+    }else throw new Error('status '+r.status);
+  }catch(_){
+    statusSync('Sem conexão · salvo só neste computador','err');
+    clearTimeout(sync.timer); sync.timer=setTimeout(()=>{ if(sync.pendente && !sync.conflito) enviar(); }, 15000);
+  }finally{ sync.enviando=false; }
+}
+// busca a versão do servidor; aplica se for mais nova e não houver alterações locais pendentes
+async function buscar(inicial=false){
+  if(!NUVEM || sync.enviando) return;
+  const ativo=document.activeElement;
+  if(!inicial && ativo && /^(INPUT|SELECT|TEXTAREA)$/.test(ativo.tagName)) return;   // não atrapalha quem está digitando
+  try{
+    if(inicial) statusSync('Carregando dados compartilhados…','pend');
+    const r=await api('GET');
+    if(r.status===401){ statusSync('Acesso recusado','err'); return; }
+    if(r.status!==200) throw new Error();
+    const remoto=r.j||{versao:0};
+    if(!remoto.versao){
+      if(sync.pendente || temDadosLocais()){
+        statusSync('Nada compartilhado ainda','pend');
+        avisoSync(`<div class="pend"><b>Ainda não há dados compartilhados.</b> Este computador tem dados preenchidos. Deseja enviá-los para que fiquem disponíveis para todos?
+          <div class="actions" style="margin-top:8px"><button class="btn primary" type="button" data-sync="enviar">Enviar os dados deste computador</button></div></div>`);
+      }else statusSync('Pronto para compartilhar','ok');
+      return;
+    }
+    if(remoto.versao===sync.versao){ if(sync.pendente) enviar(); else statusSync('Salvo para todos · '+hora(remoto.atualizadoEm),'ok'); return; }
+    if(sync.pendente && sync.versao>0){ sync.conflito=false; enviar(); return; }   // o envio identifica o conflito e mostra as opções
+    aplicarRemoto(await decifrar(remoto.iv, remoto.conteudo));
+    sync.versao=remoto.versao; sync.pendente=false; salvarSync(); avisoSync('');
+    statusSync('Atualizado · '+hora(remoto.atualizadoEm),'ok');
+  }catch(_){ statusSync('Sem conexão · salvo só neste computador','err'); }
+}
+function temDadosLocais(){ return state.records.some(r=>r.rows.some(hasName) || N(r.metas.m1) || r.ger.receita!=null); }
+async function recarregarRemoto(){
+  sync.conflito=false; sync.pendente=false; salvarSync(); avisoSync('');
+  const r=await api('GET');
+  if(r.status===200 && r.j && r.j.versao){ aplicarRemoto(await decifrar(r.j.iv, r.j.conteudo)); sync.versao=r.j.versao; salvarSync(); statusSync('Atualizado · '+hora(r.j.atualizadoEm),'ok'); }
+}
+function iniciarSync(){
+  if(!NUVEM) return;
+  buscar(true);
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && !sync.pendente) buscar(); });
+  setInterval(()=>{ if(document.visibilityState==='visible' && !sync.pendente && !sync.conflito) buscar(); }, 60000);
+}
+
+/* ============================================================
+   COMPONENTES
+   ============================================================ */
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function numInput(path,unit,val,id,aria,locked=false){
+  const pre=(unit==='brl'||unit==='brl0')?'<span class="pre">R$</span>':'';
+  const suf=unit==='pct'?'<span class="suf">%</span>':'';
+  const ph=locked?'não se aplica':(unit==='time'?'0:00:00':'');
+  const v=locked?'':esc(showUnit(val,unit));
+  return `<div class="box ${locked?'locked':''}" ${locked?'title="Não se aplica a esta loja"':''}>${pre}<input id="${id}" data-path="${path}" data-unit="${unit}" inputmode="${unit==='time'?'numeric':'decimal'}" value="${v}" placeholder="${ph}" aria-label="${esc(aria)}" autocomplete="off" ${locked?'disabled':''}>${suf}</div>`;
+}
+function field(path,unit,val,label,id,locked=false){
+  return `<label class="f ${locked?'dim':''}" for="${id}"><span class="name">${esc(label)}<span class="unit">${UNIT_TAG[unit]}</span></span>${numInput(path,unit,val,id,label,locked)}<span class="errmsg" hidden></span></label>`;
+}
+function travado(k,r){ return (k==='serv'&&!r.servicos)||(k==='item'&&r.servicos); }
+function getPath(obj,path){ return path.split('.').reduce((o,k)=>o?.[k],obj); }
+function setPath(obj,path,v){ const ks=path.split('.'); const last=ks.pop(); const o=ks.reduce((o,k)=>o[k],obj); o[last]=v; }
+
+/* ---------- Metas ---------- */
+function renderMetas(){
+  const r=cur(), m=r.metas;
+  const metaF=FIELDS.map(f=>field('metas.'+f.k,f.unit,m[f.k],f.label,'m-'+f.k,travado(f.k,r))).join('');
+  document.getElementById('tab-metas').innerHTML=`
+    <div class="card">
+      <h2>Metas da loja</h2>
+      <div class="grid-metas">
+        ${field('metas.m1','brl0',m.m1,'Meta 1 Loja','m-m1')}
+        ${field('metas.m2','brl0',m.m2,'Meta 2 Loja','m-m2')}
+      </div>
+      <p class="small muted" style="margin:0">Usadas no 1º e 2º Desafio Financeiro da loja (receita total ÷ meta), que liberam a faixa de Superação.</p>
+    </div>
+    <div class="card">
+      <h2>Metas para cada consultor</h2>
+      <div class="grid-metas">${metaF}</div>
+      <p class="small muted" style="margin:0">Percentuais: digite o número do percentual (29 = 29%). Loja Digital é tempo no formato h:mm:ss (0:12:00 = 12 minutos); quanto menor, melhor. Boleto 1 também: quanto menor o %, melhor (bate quando fica igual ou abaixo da meta).
+      As metas que valem para todas as lojas já vêm preenchidas; Meta 1, Meta 2, Item e Boleto Médio são de cada loja.
+      ${r.servicos?'Esta loja tem serviços: o indicador usa <b>Serviços</b> e o campo Item fica travado.':'Esta loja não tem serviços: o indicador usa <b>Item</b> e o campo Serviços fica travado.'}</p>
+    </div>`;
+}
+
+/* ---------- Realizado ---------- */
+function renderReal(){
+  const r=cur();
+  const cols=[{k:'m1',label:'Meta 1 Individual',unit:'brl0'},{k:'m2',label:'Meta 2 Individual',unit:'brl0'},{k:'rec',label:'Receita Realizada',unit:'brl'},...FIELDS];
+  const head=cols.map(c=>`<th class="${travado(c.k,r)?'dim':''}">${esc(c.label)}<br><span class="unit">${UNIT_TAG[c.unit]}</span></th>`).join('');
+  const body=r.rows.map((row,i)=>`<tr>
+      <td class="name"><input id="n-${i}" class="txt" data-name="${i}" value="${esc(row.nome)}" placeholder="Nome" aria-label="Consultor ${i+1}"></td>
+      ${cols.map(c=>`<td class="${c.unit==='brl'||c.unit==='brl0'?'w-brl':''}">${numInput(`rows.${i}.${c.k}`,c.unit,row[c.k],`r-${i}-${c.k}`,`${c.label} – linha ${i+1}`,travado(c.k,r))}<span class="errmsg" hidden></span></td>`).join('')}
+      <td><button class="x" type="button" data-delrow="${i}" aria-label="Remover linha ${i+1}" title="Remover linha">×</button></td>
+    </tr>`).join('');
+  document.getElementById('tab-real').innerHTML=`
+    <div class="tbl-wrap"><table class="real">
+      <thead><tr><th class="name">Consultor</th>${head}<th></th></tr></thead>
+      <tbody>${body}</tbody>
+      <tfoot><tr><td class="name">Total</td><td class="num" id="t-m1"></td><td class="num" id="t-m2"></td><td class="num" id="t-rec"></td><td colspan="${FIELDS.length+1}"></td></tr></tfoot>
+    </table></div>
+    <div class="actions"><button class="btn" type="button" id="btnAddRow">Adicionar consultor</button>
+    <span class="small muted" id="realWarn"></span></div>`;
+  updateTotals();
+}
+function updateTotals(){
+  const r=cur(), c=compute(r);
+  const s=(id,t)=>{const el=document.getElementById(id); if(el) el.textContent=t;};
+  s('t-m1',brl(c.tot.m1,0)); s('t-m2',brl(c.tot.m2,0)); s('t-rec',brl(c.tot.rec));
+  const semNome=r.rows.filter(x=>!hasName(x) && (N(x.m1)||N(x.m2)||N(x.rec))).length;
+  const w=document.getElementById('realWarn');
+  if(w) w.textContent= semNome ? `Atenção: ${semNome} linha(s) sem nome têm valores. Elas entram no total da loja, mas não aparecem no painel (igual à planilha).` : '';
+}
+
+/* ---------- Painel ---------- */
+const PILL={'-1':'p-nd',0:'p-ini',1:'p-f1',2:'p-1',3:'p-2',4:'p-sup'};
+function bar(v){ const w=Math.max(0,Math.min(1,N(v)))*100; return `<div class="bar ${N(v)>=1?'done':''}"><i style="width:${w}%"></i></div>`; }
+function renderPainel(){
+  const r=cur(), c=compute(r), L=c.loja, B=r.regra.bonusNome;
+  const ativos=c.rows.filter(x=>x.ativo);
+  const cards=ativos.map(x=>`
+    <article class="cons">
+      <div class="cons-head">
+        <div><h3>${esc(x.nome)}</h3><span class="pill ${PILL[x.fi]}">${esc(x.faixa)}</span></div>
+        <div class="com"><div class="v">${pct(x.com)}</div><span class="small muted">comissão</span></div>
+      </div>
+      <div class="metas2">
+        <div class="mt"><div class="row"><span class="muted">Meta 1</span><b class="num ${N(x.pm1)>=1?'pos':'neg'}">${pct(x.pm1)}</b></div>${bar(x.pm1)}
+          <span class="small muted">${x.f1>0?'Faltam <span class="num">'+brl(x.f1)+'</span>':(N(x.m1)?'Meta batida':'Meta não preenchida')}</span></div>
+        <div class="mt"><div class="row"><span class="muted">Meta 2</span><b class="num ${N(x.pm2)>=1?'pos':'neg'}">${pct(x.pm2)}</b></div>${bar(x.pm2)}
+          <span class="small muted">${x.f2>0?'Faltam <span class="num">'+brl(x.f2)+'</span>':(N(x.m2)?'Meta batida':'Meta não preenchida')}</span></div>
+      </div>
+      <div>
+        <div class="row" style="display:flex;justify-content:space-between;margin-bottom:6px"><span class="eyebrow">Indicadores OK</span><span class="num"><b>${x.ok}</b> de 9 · faltam ${x.faltam}</span></div>
+        <div class="chips">${x.ind.map(i=>`<div class="chip ${i.ok?'ok':''}" title="${esc(i.lower?'Boleto 1: quanto menor, melhor. Mostra o % realizado; OK quando fica igual ou abaixo da meta de '+pct(r.metas.b1):i.label)}"><span class="k">${esc(i.lower?'Boleto 1 ↓':i.label)}</span><span class="v">${i.bin?(i.ok?'OK':'Não'):i.lower?(i.v==null?'–':pct(i.v)):pct(i.v)}</span></div>`).join('')}</div>
+      </div>
+      <div class="bonus"><span class="tot">IAF ${brl(x.bonus)}</span>
+        ${x.bon.map((v,i)=>`<span class="bchip ${v>0?'on':''}" title="${esc(B[i])}">${esc(shortB(i,r))}</span>`).join('')}
+      </div>
+    </article>`).join('');
+  document.getElementById('tab-painel').innerHTML=`
+    <div class="kpis">
+      <div class="kpi"><span class="eyebrow">Receita da loja</span>${r.ger&&r.ger.receita==null
+        ?'<span class="v muted">Não preenchida</span><span class="small muted">Informe na aba Gerente.</span>'
+        :`<span class="v">${brl(L.rec)}</span><span class="small muted">Soma dos consultores: ${brl(c.tot.rec)}</span>`}</div>
+      <div class="kpi"><span class="eyebrow">1º Desafio (÷ Meta 1)</span><span class="v ${N(L.d1)>=1?'pos':'neg'}">${pct(L.d1)}</span>${bar(L.d1)}<span class="small muted">${L.f1>0?'Faltam '+brl(L.f1):(N(r.metas.m1)?'Meta 1 batida':'Meta 1 não preenchida')}</span></div>
+      <div class="kpi"><span class="eyebrow">2º Desafio (÷ Meta 2)</span><span class="v ${N(L.d2)>=1?'pos':'neg'}">${pct(L.d2)}</span>${bar(L.d2)}<span class="small muted">${L.f2>0?'Faltam '+brl(L.f2):(N(r.metas.m2)?'Meta 2 batida':'Meta 2 não preenchida')}</span></div>
+    </div>
+    ${ativos.length?`
+    <h2>Visão geral · atingimento</h2>
+    <div class="tbl-wrap"><table class="geral">
+      <thead><tr><th class="name">Consultor</th><th class="r">Meta 1</th><th class="r">Meta 2</th>
+        ${ativos[0].ind.map(i=>`<th class="r" ${i.lower?`title="Quanto menor, melhor. Mostra o % realizado; bate quando fica igual ou abaixo de ${pct(r.metas.b1)}"`:''}>${esc(i.lower?'Boleto 1 ↓':i.label)}</th>`).join('')}
+        <th class="r">Indicadores OK</th></tr></thead>
+      <tbody>${ativos.map(x=>`<tr>
+        <td class="name">${esc(x.nome)}</td>
+        <td class="r num cell ${N(x.pm1)>=1?'hit':'miss'}">${pct(x.pm1)}</td>
+        <td class="r num cell ${N(x.pm2)>=1?'hit':'miss'}">${pct(x.pm2)}</td>
+        ${x.ind.map(i=>`<td class="r num cell ${i.ok?'hit':'miss'}">${i.bin?(i.ok?'OK':'Não'):i.lower?(i.v==null?'–':pct(i.v)):pct(i.v)}</td>`).join('')}
+        <td class="r num"><b>${x.ok}</b> de 9</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+    <p class="small muted" style="margin:0">Verde = meta batida. Os percentuais mostram realizado ÷ meta; no Boleto 1 aparece o % realizado, porque quanto menor, melhor.</p>
+    <h2>Por consultor</h2>
+    <div class="cons-list">${cards}</div>`:`<div class="empty">Nenhum consultor ainda. Preencha os nomes na aba <b>Realizado</b>.</div>`}
+    <p class="small muted" style="margin:0">Os dois desafios da loja valem para a faixa de Superação: além da 2ª meta individual e ${r.regra.faixas[4].ind} indicadores, a loja precisa bater as duas metas.</p>`;
+}
+function shortB(i,r){ return ['NPS + Omnicanal','Cuidados Faciais', r.servicos?'Serviços':'Item','Loja Digital','Boleto Médio'][i]; }
+
+/* ---------- Regra ---------- */
+function renderRegra(){
+  const R=cur().regra, serv=cur().servicos;
+  const cond=['Nota NPS % ≥ meta E Respostas NPS ≥ meta','Skin % do consultor ≥ meta de Skin %',
+    serv?'Serviços ≥ meta de Serviços':'Item ≥ meta de Item (loja sem serviços)','Tempo no mês menor que a meta de Loja Digital','Boleto Médio ≥ meta de Boleto Médio'];
+  document.getElementById('tab-regra').innerHTML=`
+    <div class="two">
+      <div class="card"><h2>Bonificação IAF</h2>
+        <table class="regra"><thead><tr><th>Bonificação</th><th>Valor</th><th>Condição</th></tr></thead><tbody>
+        ${R.bonus.map((v,i)=>`<tr><td>${esc(R.bonusNome[i])}</td><td class="num">${brl(v)}</td><td class="small muted">${cond[i]}</td></tr>`).join('')}
+        <tr><td><b>Total possível</b></td><td class="num"><b>${brl(R.bonus.reduce((a,b)=>a+N(b),0))}</b></td><td></td></tr>
+        </tbody></table>
+        <p class="small muted" style="margin:0">Cada bonificação só conta se a meta correspondente estiver preenchida.</p>
+      </div>
+      <div class="card"><h2>Faixas de comissão</h2>
+        <table class="regra"><thead><tr><th>Faixa</th><th>Atingimento de vendas</th><th>Indicadores (mín. de 9)</th><th>Comissão</th></tr></thead><tbody>
+        ${R.faixas.map(f=>`<tr><td><b>${esc(f.nome)}</b></td><td class="small">${esc(f.ating)}</td><td class="num">${f.ind}</td><td class="num">${pct(f.com)}</td></tr>`).join('')}
+        </tbody></table>
+      </div>
+    </div>
+    <p class="small muted" style="margin:0">Aba só de leitura: a regra é a mesma para todas as lojas.</p>`;
+}
+
+/* ---------- Gerente (aba dentro de cada loja) ---------- */
+function renderGerente(){
+  const r=cur(), g=r.ger, P=gerPct(r.loja);
+  document.getElementById('tab-ger').innerHTML=`
+    <div class="kpis" id="gerKpis"></div>
+    <div class="ger-wrap">
+      <div class="card">
+        <h2>Dados da loja para a gerente</h2>
+        <div class="grid-metas">
+          ${field('ger.receita','brl',g.receita,'Receita realizada da loja','g-receita')}
+          <div class="f"><span class="name">Loja Diamante IAF?</span>
+            <div class="seg" role="group" aria-label="Loja Diamante IAF?">
+              <button type="button" data-diamante="1" aria-pressed="${g.diamante}">Sim</button><button type="button" data-diamante="0" aria-pressed="${!g.diamante}">Não</button>
+            </div></div>
+        </div>
+        <p class="small muted" style="margin:0">A receita da loja é digitada à parte (não é a soma dos consultores). Ela é usada no 1º e 2º desafio da gerente, contra a Meta 1 (${N(r.metas.m1)?brl(r.metas.m1,0):'não preenchida'}) e a Meta 2 (${N(r.metas.m2)?brl(r.metas.m2,0):'não preenchida'}) da loja, e na premiação da supervisora.</p>
+        <h3>Indicadores IAF da gerente</h3>
+        <div class="ger-ind">
+          <span class="h">Indicador</span><span class="h">Meta</span><span class="h">Realizado</span><span class="h" style="text-align:right">Atingido</span>
+          ${gerInds(r.loja).map(i=>`
+            <span class="lb">${esc(i.label)}</span>
+            ${numInput('ger.metas.'+i.k,i.unit,g.metas[i.k],'g-meta-'+i.k,i.label+' – meta')}
+            ${numInput('ger.'+i.k,i.unit,g[i.k],'g-real-'+i.k,i.label+' – realizado')}
+            <span class="num" style="text-align:right" id="g-at-${i.k}"></span>`).join('')}
+        </div>
+        <span class="errmsg" hidden></span>
+      </div>
+      <div class="card"><h2>Tabela de comissão · gerente ${esc(r.loja)}</h2>
+        <table class="regra"><thead><tr><th>Critério</th><th>Comissão</th></tr></thead><tbody>
+        ${GER_FAIXAS.map((f,i)=>`<tr id="g-fx-${i}"><td>${esc(f.nome)}</td><td class="num">${pct(P[i])}</td></tr>`).join('')}
+        </tbody></table>
+      </div>
+    </div>`;
+  updateGerente();
+}
+function updateGerente(){
+  const box=document.getElementById('gerKpis'); if(!box) return;
+  const r=cur(), x=computeGerente(r);
+  box.innerHTML=`
+    <div class="kpi"><span class="eyebrow">Gerente</span><span class="v" style="font-family:var(--f-body);font-size:1.05rem">${esc(r.gerente||'—')}</span><span class="small muted">${esc(r.loja)}</span></div>
+    <div class="kpi"><span class="eyebrow">1º Desafio</span><span class="v ${x.q1>=1?'pos':'neg'}">${pct(x.q1)}</span>${bar(x.q1)}</div>
+    <div class="kpi"><span class="eyebrow">2º Desafio</span><span class="v ${x.q2>=1?'pos':'neg'}">${pct(x.q2)}</span>${bar(x.q2)}</div>
+    <div class="kpi"><span class="eyebrow">Indicadores IAF</span><span class="v">${x.iaf} de 3</span><span class="small muted">Diamante: ${r.ger.diamante?'Sim':'Não'}</span></div>
+    <div class="kpi"><span class="eyebrow">Comissão gerente</span><span class="v">${pct(x.com)}</span><span class="small muted">${esc(x.faixa)}</span></div>`;
+  x.ind.forEach(i=>{ const el=document.getElementById('g-at-'+i.k); if(el){ el.textContent=pct(i.v); el.className='num '+(i.v>=1?'pos':'neg'); } });
+  GER_FAIXAS.forEach((_,i)=>{ const tr=document.getElementById('g-fx-'+i); if(tr) tr.style.background=i===x.fi?'var(--ok-soft)':''; });
+}
+
+/* ---------- Supervisora (todas as lojas) ---------- */
+function renderSup(){
+  document.getElementById('tab-sup').innerHTML=`
+    <div class="top" style="align-items:end">
+      <h2>Supervisora · ${SUP_TXT()}</h2>
+      <label class="lbl" for="i-sup" style="min-width:220px">Nome<input id="i-sup" class="txt" data-global="supervisora" placeholder="Nome" value="${esc(state.supervisora)}"></label>
+    </div>
+    <div class="kpis" id="supKpis"></div>
+    <div class="two">
+      <div class="card"><h2>Lojas</h2><div id="supLojas"></div>
+        <p class="small muted" style="margin:0">A receita de cada loja é a mesma digitada na aba Gerente da loja. ${SUP_FORA.join(' e ')} não entram na comissão da supervisora.</p></div>
+      <div class="card"><h2>Tabela de premiação</h2>
+        <table class="regra"><thead><tr><th>Critério</th><th>% do faturamento</th></tr></thead><tbody>
+        ${SUP_FAIXAS.map((f,i)=>`<tr id="s-fx-${i}"><td>Vender ${NF0.format(f.ating*100)}% da meta</td><td class="num">${pct(f.pct)}</td></tr>`).join('')}
+        </tbody></table>
+        <p class="small muted" style="margin:0">Premiação R$ = % aplicado × faturamento realizado das ${SUP_TXT()}. Abaixo de 80% da meta, não há premiação.</p></div>
+    </div>`;
+  updateSup();
+}
+function updateSup(){
+  const box=document.getElementById('supKpis'); if(!box) return;
+  const s=computeSupervisora(state.records);
+  box.innerHTML=`
+    <div class="kpi"><span class="eyebrow">Meta (soma das Metas 1)</span><span class="v">${brl(s.meta)}</span></div>
+    <div class="kpi"><span class="eyebrow">Realizado (${SUP_TXT()})</span><span class="v">${brl(s.real)}</span></div>
+    <div class="kpi"><span class="eyebrow">% atingido</span><span class="v ${s.ating>=1?'pos':'neg'}">${pct(s.ating)}</span>${bar(s.ating)}</div>
+    <div class="kpi"><span class="eyebrow">Premiação</span><span class="v">${brl(s.premio)}</span><span class="small muted">${pct(s.pct)} do faturamento</span></div>`;
+  document.getElementById('supLojas').innerHTML=`<div class="tbl-wrap" style="border:0"><table class="geral">
+    <thead><tr><th class="name">Loja</th><th class="r">Meta 1</th><th class="r">Receita</th><th class="r">%</th></tr></thead>
+    <tbody>${supLojas(state.records).map(r=>{ const a=ratio(r.ger.receita,r.metas.m1); return `<tr><td class="name">${esc(r.loja)}</td><td class="r num">${N(r.metas.m1)?brl(r.metas.m1,0):'<span class="muted">–</span>'}</td><td class="r num">${r.ger.receita==null?'<span class="neg">não digitada</span>':brl(r.ger.receita)}</td><td class="r num ${a>=1?'pos':'neg'}">${pct(a)}</td></tr>`; }).join('')}</tbody>
+    <tfoot><tr><td class="name">Total</td><td class="r num">${brl(s.meta,0)}</td><td class="r num">${brl(s.real)}</td><td class="r num">${pct(s.ating)}</td></tr></tfoot></table></div>`;
+  SUP_FAIXAS.forEach((_,i)=>{ const tr=document.getElementById('s-fx-'+i); if(tr) tr.style.background=i===s.fi?'var(--ok-soft)':''; });
+}
+
+/* ---------- Fechamento (todas as lojas) ---------- */
+function fechamentoDados(){
+  return state.records.map(r=>{ const c=compute(r); return {r, c, ativos:c.rows.filter(x=>x.ativo)}; });
+}
+// o que ainda falta preencher e muda o resultado
+function pendencias(dados){
+  const p=[];
+  if(!String(state.mes||'').trim()) p.push('Mês do fechamento não preenchido.');
+  dados.forEach(({r,ativos})=>{
+    if(!ativos.length){ p.push(`<b>${esc(r.loja)}</b>: nenhum consultor preenchido.`); return; }
+    const faltaLoja=[!N(r.metas.m1)&&'Meta 1 da loja', !N(r.metas.m2)&&'Meta 2 da loja'].filter(Boolean);
+    if(faltaLoja.length) p.push(`<b>${esc(r.loja)}</b>: ${faltaLoja.join(' e ')} não preenchida (sem isso ninguém chega na Superação).`);
+    const faltaMetas=FIELDS.filter(f=>!travado(f.k,r) && r.metas[f.k]==null).map(f=>f.label);
+    if(faltaMetas.length) p.push(`<b>${esc(r.loja)}</b>: meta de ${faltaMetas.join(', ')} não preenchida (o indicador e a bonificação não contam).`);
+    ativos.filter(x=>x.fi===-1).forEach(x=>p.push(`<b>${esc(r.loja)}</b> · ${esc(x.nome)}: sem Meta 1 individual ou sem receita (comissão 0%).`));
+    const semNome=r.rows.filter(x=>!hasName(x) && (N(x.m1)||N(x.m2)||N(x.rec))).length;
+    if(semNome) p.push(`<b>${esc(r.loja)}</b>: ${semNome} linha(s) com valores e sem nome do consultor.`);
+  });
+  // gerentes e supervisora
+  dados.forEach(({r})=>{
+    const falta=[];
+    if(!String(r.gerente||'').trim()) falta.push('nome');
+    if(r.ger.receita==null) falta.push('receita da loja');
+    gerInds(r.loja).forEach(i=>{ if(r.ger[i.k]==null) falta.push(i.label); });
+    if(falta.length) p.push(`<b>${esc(r.loja)}</b> · gerente: falta ${falta.join(', ')} (aba Gerente).`);
+  });
+  if(!String(state.supervisora||'').trim()) p.push('Supervisora: nome não preenchido.');
+  return p;
+}
+function renderFech(){
+  const dados=fechamentoDados(), pend=pendencias(dados);
+  const totRec=dados.reduce((a,d)=>a+d.c.tot.rec,0), totIAF=dados.reduce((a,d)=>a+d.c.loja.bonusTotal,0), totCons=dados.reduce((a,d)=>a+d.ativos.length,0);
+  const consRows=dados.filter(d=>d.ativos.length).map(({r,ativos},li)=>ativos.map((x,i)=>`<tr class="${i===0&&li>0?'sep':''}">
+      <td class="loja">${i===0?esc(r.loja):''}</td>
+      <td class="name">${esc(x.nome)}</td>
+      <td class="r num">${brl(x.rec)}</td>
+      <td class="r num ${N(x.pm1)>=1?'pos':'neg'}">${pct(x.pm1)}</td>
+      <td class="r num ${N(x.pm2)>=1?'pos':'neg'}">${pct(x.pm2)}</td>
+      <td class="r num">${x.ok} de 9</td>
+      <td><span class="pill ${PILL[x.fi]}" style="margin-top:0">${esc(x.faixa)}</span></td>
+      <td class="r num"><b>${pct(x.com)}</b></td>
+      <td class="r num">${brl(x.bonus)}</td></tr>`).join('')).join('');
+  document.getElementById('tab-fech').innerHTML=`
+    <div class="top" style="align-items:center">
+      <h2>Fechamento ${state.mes?'· '+esc(state.mes):''}</h2>
+      <div class="actions"><button class="btn primary" type="button" id="btnXlsx">Baixar planilha do fechamento (.xlsx)</button></div>
+    </div>
+    <div id="xlsxMsg"></div>
+    ${pend.length?`<div class="pend"><b>Pendências (${pend.length})</b> — confira antes de fechar:<ul>${pend.map(x=>`<li>${x}</li>`).join('')}</ul></div>`:`<div class="notice success">Tudo preenchido nas 6 lojas.</div>`}
+    <h2>Gerentes</h2>
+    <div class="tbl-wrap"><table class="geral">
+      <thead><tr><th>Loja</th><th class="name">Gerente</th><th class="r">Receita da loja</th><th class="r">1º Desafio</th><th class="r">2º Desafio</th><th class="r">Indicadores IAF</th><th>Diamante</th><th>Faixa</th><th class="r">Comissão</th></tr></thead>
+      <tbody>${dados.map(({r})=>{ const g=computeGerente(r); return `<tr>
+        <td class="loja">${esc(r.loja)}</td>
+        <td class="name">${r.gerente?esc(r.gerente):'<span class="muted">—</span>'}</td>
+        <td class="r num">${r.ger.receita==null?'<span class="neg">não digitada</span>':brl(r.ger.receita)}</td>
+        <td class="r num ${g.q1>=1?'pos':'neg'}">${pct(g.q1)}</td>
+        <td class="r num ${g.q2>=1?'pos':'neg'}">${pct(g.q2)}</td>
+        <td class="r num">${g.iaf} de 3</td>
+        <td>${r.ger.diamante?'Sim':'Não'}</td>
+        <td>${esc(g.faixa)}</td>
+        <td class="r num"><b>${pct(g.com)}</b></td></tr>`; }).join('')}</tbody>
+    </table></div>
+    ${(()=>{ const s=computeSupervisora(state.records); return `<h2>Supervisora</h2>
+    <div class="tbl-wrap"><table class="geral">
+      <thead><tr><th class="name">Supervisora</th><th class="r">Meta (${SUP_TXT()})</th><th class="r">Realizado (${SUP_TXT()})</th><th class="r">% atingido</th><th class="r">% aplicado</th><th class="r">Premiação</th></tr></thead>
+      <tbody><tr><td class="name">${state.supervisora?esc(state.supervisora):'<span class="muted">—</span>'}</td><td class="r num">${brl(s.meta,0)}</td><td class="r num">${brl(s.real)}</td><td class="r num ${s.ating>=1?'pos':'neg'}">${pct(s.ating)}</td><td class="r num">${pct(s.pct)}</td><td class="r num"><b>${brl(s.premio)}</b></td></tr></tbody>
+    </table></div>`; })()}
+    <h2>Consultores</h2>
+    ${totCons?`<div class="tbl-wrap"><table class="geral">
+      <thead><tr><th>Loja</th><th class="name">Consultor</th><th class="r">Receita</th><th class="r">% Meta 1</th><th class="r">% Meta 2</th><th class="r">Indicadores OK</th><th>Faixa</th><th class="r">Comissão</th><th class="r">Bonificação IAF</th></tr></thead>
+      <tbody>${consRows}</tbody>
+      <tfoot><tr><td></td><td class="name">Total</td><td class="r num">${brl(totRec)}</td><td></td><td></td><td></td><td></td><td></td><td class="r num">${brl(totIAF)}</td></tr></tfoot>
+    </table></div>`:`<div class="empty">Nenhum consultor preenchido ainda. Escolha uma loja acima e preencha a aba <b>Realizado</b>.</div>`}
+    <p class="small muted" style="margin:0">Comissão de consultores e gerentes em %. Bonificação IAF e premiação da supervisora em R$.</p>`;
+}
+
+// gera o .xlsx com duas abas: Consultores e Lojas (números com formato de R$ e %, prontos para somar)
+function baixarPlanilha(){
+  const msg=document.getElementById('xlsxMsg');
+  if(typeof XLSX==='undefined'){ msg.innerHTML='<div class="notice error"><b>Não foi possível gerar a planilha.</b> O gerador de planilhas precisa de internet na primeira vez. Verifique a conexão, recarregue a página (F5) e tente de novo.</div>'; return; }
+  const dados=fechamentoDados(), mes=state.mes||'';
+  const BRL='"R$" #,##0.00', PCT='0.0%', INT='0';
+  const nb=(v)=>typeof v==='number'&&isFinite(v)?v:null;
+  // aba Consultores
+  const hC=['Mês','Loja','Consultor','Receita realizada','Meta 1 individual','% Meta 1','Meta 2 individual','% Meta 2','Indicadores OK (de 9)','Faixa','Comissão %','Bonificação IAF total','IAF NPS + Omnicanal','IAF Cuidados Faciais','IAF Serviços / Item','IAF Loja Digital','IAF Boleto Médio'];
+  const fC=[null,null,null,BRL,BRL,PCT,BRL,PCT,INT,null,PCT,BRL,BRL,BRL,BRL,BRL,BRL];
+  const linhasC=[];
+  dados.forEach(({r,ativos})=>ativos.forEach(x=>linhasC.push([mes,r.loja,x.nome,N(x.rec),nb(x.m1),x.pm1,nb(x.m2),x.pm2,x.ok,x.faixa,x.com,x.bonus,...x.bon])));
+  const sheet=(head,linhas,fmts,larg)=>{
+    const ws=XLSX.utils.aoa_to_sheet([head,...linhas]);
+    linhas.forEach((_,i)=>fmts.forEach((z,j)=>{ const a=XLSX.utils.encode_cell({r:i+1,c:j}); if(z&&ws[a]&&ws[a].t==='n') ws[a].z=z; }));
+    ws['!cols']=larg.map(w=>({wch:w}));
+    return ws;
+  };
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, sheet(hC,linhasC,fC,[12,14,26,16,16,10,16,10,12,16,11,14,12,12,12,12,12]), 'Consultores');
+  // aba Gerentes (3º indicador muda por loja: Serviços em qtd ou Resgate Fidelidade em %)
+  const hG=['Mês','Loja','Gerente','Receita da loja','Meta 1 loja','1º Desafio','Meta 2 loja','2º Desafio','ID Cliente % (realizado)','Skin % (realizado)','3º indicador','3º indicador (realizado)','Indicadores IAF (de 3)','Loja Diamante IAF','Faixa','Comissão %'];
+  const fG=[null,null,null,BRL,BRL,PCT,BRL,PCT,PCT,PCT,null,null,INT,null,null,PCT];
+  const linhasG=dados.map(({r})=>{ const g=computeGerente(r), t=gerInds(r.loja)[2];
+    return [mes,r.loja,r.gerente||'',nb(r.ger.receita),nb(r.metas.m1),g.q1,nb(r.metas.m2),g.q2,nb(r.ger.id),nb(r.ger.skin),t.label,nb(r.ger[t.k]),g.iaf,r.ger.diamante?'Sim':'Não',g.faixa,g.com]; });
+  const wsG=sheet(hG,linhasG,fG,[12,14,18,16,14,11,14,11,14,12,20,14,12,12,36,11]);
+  linhasG.forEach((l,i)=>{ const a=XLSX.utils.encode_cell({r:i+1,c:11}); if(wsG[a]&&wsG[a].t==='n') wsG[a].z=l[10].includes('%')?PCT:INT; });
+  XLSX.utils.book_append_sheet(wb, wsG, 'Gerentes');
+  // aba Supervisora
+  const s=computeSupervisora(state.records);
+  XLSX.utils.book_append_sheet(wb, sheet(['Mês','Supervisora','Lojas consideradas','Meta (soma das Metas 1)','Realizado','% atingido','% aplicado','Premiação R$'],
+    [[mes,state.supervisora||'',supLojas(state.records).map(r=>r.loja).join(', '),s.meta,s.real,s.ating,s.pct,s.premio]],[null,null,null,BRL,BRL,PCT,PCT,BRL],[12,18,34,20,18,11,11,14]), 'Supervisora');
+  const nome=('Fechamento comissões '+(mes||'sem mês')).replace(/[\\/:*?"<>|]/g,'-')+'.xlsx';
+  XLSX.writeFile(wb, nome);
+  msg.innerHTML=`<div class="notice success">Planilha “${esc(nome)}” gerada: ${linhasC.length} consultor(es) em ${dados.filter(d=>d.ativos.length).length} loja(s). Ela vai para a pasta de Downloads.</div>`;
+}
+window.baixarPlanilha=baixarPlanilha;
+
+/* ---------- topo ---------- */
+function renderHeader(){
+  const r=cur(), fora=state.view!=='loja';
+  document.getElementById('i-mes').value=state.mes||'';
+  renderLojaBar();
+  ['lojaInfo','lojaTabs','lojaView'].forEach(id=>document.getElementById(id).hidden=fora);
+  document.getElementById('tab-fech').hidden=state.view!=='fech';
+  document.getElementById('tab-sup').hidden=state.view!=='sup';
+  document.getElementById('lojaNome').textContent=r.loja;
+  document.getElementById('i-ger').value=r.gerente;
+  document.getElementById('servInfo').innerHTML=r.servicos?'<b>Sim</b> · conta Serviços':'<b>Não</b> · conta Item';
+}
+// botões das lojas, com a contagem de consultores de cada uma
+function renderLojaBar(){
+  const bar=document.getElementById('lojaBar');
+  bar.innerHTML=state.records.map(r=>{
+    const n=r.rows.filter(hasName).length;
+    const on=state.view==='loja'&&state.loja===r.loja;
+    return `<button type="button" data-loja="${esc(r.loja)}" aria-pressed="${on}"><b>${esc(r.loja)}</b><span>${n?n+' consultor'+(n>1?'es':''):'sem consultores'}</span></button>`;
+  }).join('')
+  +`<button type="button" class="fech" data-sup="1" aria-pressed="${state.view==='sup'}"><b>Supervisora</b><span>${SUP_TXT()}</span></button>`
+  +`<button type="button" class="fech2" data-fech="1" aria-pressed="${state.view==='fech'}"><b>Fechamento</b><span>todas as lojas</span></button>`;
+}
+function renderAll(){
+  renderHeader();
+  if(state.view==='fech') renderFech();
+  else if(state.view==='sup') renderSup();
+  else { renderPainel(); renderMetas(); renderReal(); renderGerente(); renderRegra(); }
+}
+function refreshComputed(){
+  if(state.view==='sup'){ updateSup(); return; }
+  renderPainel(); updateTotals(); updateGerente(); renderLojaBar();
+}
+
+/* ============================================================
+   EVENTOS
+   ============================================================ */
+document.addEventListener('input',e=>{
+  const el=e.target, r=cur();
+  if(el.dataset.path){
+    const res=parseUnit(el.value,el.dataset.unit);
+    const box=el.closest('.box'), msg=box.parentElement.querySelector('.errmsg');
+    if(res.err){ box.classList.add('err'); if(msg){msg.textContent=res.err; msg.hidden=false;} return; }
+    box.classList.remove('err'); if(msg) msg.hidden=true;
+    setPath(r,el.dataset.path,res.v); save(); refreshComputed();
+  } else if(el.dataset.name!==undefined){
+    r.rows[+el.dataset.name].nome=el.value; save(); refreshComputed();
+  } else if(el.dataset.info){
+    r[el.dataset.info]=el.value; save();
+  } else if(el.dataset.global){
+    state[el.dataset.global]=el.value; save();
+  }
+});
+// ao sair do campo, mostra o valor já no formato da unidade (ex.: 12:00 → 0:12:00)
+document.addEventListener('change',e=>{
+  const el=e.target;
+  if(el.dataset.path){ const res=parseUnit(el.value,el.dataset.unit); if(!res.err) el.value=showUnit(res.v,el.dataset.unit); }
+});
+document.addEventListener('click',e=>{
+  const t=e.target.closest('button'); if(!t) return;
+  const r=cur();
+  // trocar de loja ou de tela não altera os dados compartilhados: salva só neste computador
+  if(t.dataset.loja){ state.loja=t.dataset.loja; state.view='loja'; saveLocal(); renderAll(); }
+  else if(t.dataset.fech){ state.view='fech'; saveLocal(); renderAll(); }
+  else if(t.dataset.sup){ state.view='sup'; saveLocal(); renderAll(); }
+  else if(t.dataset.sync==='enviar'){ avisoSync(''); sync.pendente=true; enviar(); }
+  else if(t.dataset.sync==='manter'){ avisoSync(''); sync.conflito=false; enviar(true); }
+  else if(t.dataset.sync==='recarregar'){ recarregarRemoto(); }
+  else if(t.dataset.diamante!==undefined){
+    r.ger.diamante=t.dataset.diamante==='1'; save();
+    document.querySelectorAll('[data-diamante]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.diamante===(r.ger.diamante?'1':'0'))));
+    updateGerente();
+  }
+  else if(t.id==='btnXlsx'){ baixarPlanilha(); }
+  else if(t.id==='btnExemplo'){ state=dadosExemplo(); saveLocal(); renderAll(); }
+  else if(t.dataset.tab){
+    document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b===t?'true':'false'));
+    ['painel','metas','real','ger','regra'].forEach(k=>document.getElementById('tab-'+k).hidden=(k!==t.dataset.tab));
+    if(t.dataset.tab==='painel') renderPainel();
+    if(t.dataset.tab==='ger') renderGerente();
+    try{ localStorage.setItem(KEY+'-tab',t.dataset.tab); }catch(_){}
+  }
+  else if(t.dataset.delrow!==undefined){ r.rows.splice(+t.dataset.delrow,1); if(!r.rows.length) r.rows.push(emptyRow()); save(); renderReal(); renderPainel(); }
+  else if(t.id==='btnAddRow'){ r.rows.push(emptyRow()); save(); renderReal(); document.getElementById('n-'+(r.rows.length-1))?.focus(); }
+  else if(t.id==='btnNew'){
+    // pede confirmação no próprio botão (clicar de novo em até 5 s)
+    if(!t.classList.contains('armed')){
+      t.classList.add('danger','armed'); t.textContent='Clique de novo para apagar o realizado das 6 lojas';
+      clearTimeout(t._tm); t._tm=setTimeout(()=>{t.classList.remove('danger','armed'); t.textContent='Começar mês novo';},5000); return;
+    }
+    clearTimeout(t._tm); t.classList.remove('danger','armed'); t.textContent='Começar mês novo';
+    // mês novo, em todas as lojas: mantém gerente e os nomes dos consultores; metas voltam ao padrão e o realizado fica vazio
+    state.records=state.records.map(old=>{
+      const n=lojaRecord(old.loja); n.gerente=old.gerente;
+      const nomes=old.rows.filter(hasName).map(x=>x.nome);
+      if(nomes.length) n.rows=nomes.map(nome=>Object.assign(emptyRow(),{nome}));
+      return n;
+    });
+    state.mes=''; save(); renderAll(); document.getElementById('i-mes').focus();
+  }
+});
+
+/* início */
+renderAll();
+if(NUVEM){
+  document.getElementById('introDados').textContent='Os dados são compartilhados: o que for salvo aqui fica disponível para todos que acessam com a senha.';
+  iniciarSync();
+}
+try{ const t=localStorage.getItem(KEY+'-tab'); if(t) document.querySelector(`.tabs button[data-tab="${t}"]`)?.click(); }catch(_){}
+</script>
+</body>
+</html>

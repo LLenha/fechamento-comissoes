@@ -1,0 +1,22 @@
+# Planilhas e arquivos de dados não devem ser versionados
+*.xlsx
+*.xlsm
+*.xls
+*.csv
+*.json
+*.docx
+*.pdf
+~$*
+!package.json
+!package-lock.json
+
+# Parâmetros de criptografia e saída gerados localmente
+tools/config.json
+publicar/
+
+# Dependências e vínculo local com o Netlify
+node_modules/
+.netlify/
+
+# Configuração local de testes
+.claude/
